@@ -1,0 +1,16 @@
+[project]
+name = "whoop-bridge"
+version = "1.0.0"
+description = "Read a WHOOP 4.0 strap over Bluetooth LE and forward the data to your own endpoint."
+requires-python = ">=3.11"
+dependencies = ["bleak>=0.22.0", "httpx>=0.27.0", "click>=8.1.0"]
+
+[project.scripts]
+whoop-bridge = "whoop_bridge.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["whoop_bridge*"]
