@@ -71,6 +71,10 @@ The server also learns from your data over time — see
   signal from concordant deviations in resting HR, HRV, skin temperature and
   respiration.
 
+Iconography is a hand-built thin-line set (24px grid, 1.5px stroke) rendered as
+inline SVG — no emoji and no icon font, so nothing is fetched at runtime and
+every glyph inherits the current accent colour.
+
 A device chip in the top right shows the strap's battery and a status light:
 green when the laptop is connected to the strap, amber when the bridge is
 running but cannot see it, red when the laptop itself has stopped checking in.

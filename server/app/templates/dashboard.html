@@ -22,6 +22,7 @@
   --strain:#00E5FF; /* electric cyan */
   --sleep:#9D00FF;  /* vivid purple  */
   --strain-dim:rgba(0,229,255,.16); --sleep-dim:rgba(157,0,255,.18);
+  --hot-dim:rgba(255,59,48,.18);
   --track:rgba(255,255,255,.10);
   --r:16px; --r-sm:12px;
   --ease:cubic-bezier(.22,.61,.36,1);
@@ -34,6 +35,7 @@
   --good:#0ca30c; --warn:#B8860B; --crit:#D03B3B;
   --strain:#0071A4; --sleep:#7C3AED;
   --strain-dim:rgba(0,113,164,.12); --sleep-dim:rgba(124,58,237,.12);
+  --hot-dim:rgba(208,59,59,.12);
   --track:rgba(0,0,0,.09);
 }
 *{box-sizing:border-box}
@@ -48,7 +50,8 @@ body{margin:0;color:var(--ink);
   padding:max(10px,env(safe-area-inset-top)) 14px calc(78px + env(safe-area-inset-bottom));
   -webkit-font-smoothing:antialiased}
 nav button{transition:color .2s,background .2s}
-nav button .g{transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+nav button .g{transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+  display:grid;place-items:center;height:22px}
 nav button[aria-selected="true"] .g{transform:translateY(-1px) scale(1.12)}
 .wrap{max-width:600px;margin:0 auto}
 
@@ -58,7 +61,7 @@ h1{font-size:17px;margin:0;letter-spacing:-.01em;font-weight:650}
 .hdr-r{display:flex;align-items:center;gap:10px}
 .sub{color:var(--muted);font-size:11.5px}
 button.icon{background:transparent;border:1px solid var(--line);color:var(--ink2);
-  width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px;
+  width:32px;height:32px;border-radius:50%;cursor:pointer;
   display:grid;place-items:center;padding:0;flex:0 0 auto}
 
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
@@ -86,11 +89,13 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .dev{display:flex;align-items:center;gap:7px;background:var(--card);
   border:1px solid var(--line);border-radius:999px;padding:5px 9px 5px 11px;
   cursor:pointer;font-size:12px;color:var(--ink2);transition:border-color .25s}
-.dev .pct{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.dev .pct{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);
+  display:inline-flex;align-items:center;gap:2px}
+.dev .pct svg{color:var(--good)}
 .dev .pct.dim{color:var(--muted);font-weight:400}
-.dev .strap{position:relative;display:grid;place-items:center;width:19px;height:23px}
-.dev .strap svg{opacity:.75}
-.dev .led{position:absolute;top:-1px;right:-2px;width:8px;height:8px;border-radius:50%;
+.dev .strap{display:grid;place-items:center;opacity:.8}
+.dev{position:relative}
+.dev .led{position:absolute;top:3px;right:6px;width:8px;height:8px;border-radius:50%;
   background:var(--muted);box-shadow:0 0 0 2px var(--card);transition:background .3s,box-shadow .3s}
 .dev.good .led{background:var(--good);
   box-shadow:0 0 0 2px var(--card),0 0 7px 1px color-mix(in srgb,var(--good) 75%,transparent);
@@ -137,7 +142,7 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   transition:opacity .25s,max-height .3s,margin .3s;overflow:hidden;max-height:44px}
 .ringbar.compact .datenav{opacity:0;max-height:0;margin-bottom:0;pointer-events:none}
 .datenav button{background:transparent;border:none;color:var(--muted);cursor:pointer;
-  font:inherit;font-size:17px;padding:5px 11px;border-radius:9px;line-height:1}
+  font:inherit;padding:5px 10px;border-radius:var(--r-sm);display:grid;place-items:center}
 .datenav button:disabled{opacity:.28;cursor:default}
 .datenav .lbl{background:var(--card);border:1px solid var(--line);border-radius:999px;
   padding:7px 20px;font-size:12px;font-weight:650;letter-spacing:.09em;
@@ -222,7 +227,9 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .sug.notice{border-left-color:var(--warn)}
 .sug.info{border-left-color:var(--good)}
 .sug .top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.sug .ic{font-size:15px;line-height:1}
+.sug .ic{display:grid;place-items:center;flex:0 0 auto}
+.sug.warning .ic{color:var(--crit)} .sug.notice .ic{color:var(--warn)}
+.sug.info .ic{color:var(--good)}
 .sug h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
 .sug p{margin:0;color:var(--ink2);font-size:13px;line-height:1.55}
 details.more{margin-top:9px}
@@ -268,11 +275,12 @@ details.more p{margin-top:7px;font-size:12px;color:var(--muted)}
 .arow{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid var(--line)}
 .arow:last-child{border-bottom:none}
 .arow .ic{width:38px;height:38px;border-radius:var(--r-sm);display:grid;place-items:center;
-  font-size:17px;flex:0 0 auto;background:var(--strain-dim)}
+  flex:0 0 auto;background:var(--strain-dim);color:var(--strain)}
 .arow .m{flex:1 1 auto;min-width:0}
-.arow .m .t{font-weight:600;font-size:14px}
+.arow .m .t{font-weight:700;font-size:13px}
+.arow .m .t.up{text-transform:uppercase;letter-spacing:1.2px}
 .arow .m .s{color:var(--muted);font-size:11.5px;margin-top:2px}
-.arow .go{flex:0 0 auto;color:var(--muted);font-size:17px}
+.arow .go{flex:0 0 auto;color:var(--muted);display:grid;place-items:center}
 .pill{font-size:9.5px;border:1px solid var(--line);border-radius:999px;padding:2px 7px;
   color:var(--muted);text-transform:uppercase;letter-spacing:.06em;vertical-align:1px}
 .pill.ok{color:var(--good);border-color:var(--good)}
@@ -324,9 +332,10 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;
   padding:7px 6px calc(7px + env(safe-area-inset-bottom))}
 @supports not (backdrop-filter:blur(1px)){ nav{background:var(--card)} }
 nav button{flex:1 1 0;background:none;border:none;color:var(--muted);cursor:pointer;
-  font:inherit;font-size:10px;padding:5px 2px;display:flex;flex-direction:column;
-  align-items:center;gap:3px;border-radius:10px;letter-spacing:.02em}
-nav button .g{font-size:18px;line-height:1}
+  font:inherit;font-size:9.5px;padding:5px 2px;display:flex;flex-direction:column;
+  align-items:center;gap:3px;border-radius:var(--r-sm);letter-spacing:.4px;
+  text-transform:uppercase;font-weight:600}
+
 nav button[aria-selected="true"]{color:var(--strain)}
 nav button:active{transform:scale(.96)}
 @media (min-width:680px){
@@ -345,16 +354,10 @@ nav button:active{transform:scale(.96)}
     <div class="hdr-r">
       <button class="dev" id="dev" aria-label="Device status" aria-expanded="false">
         <span class="pct dim" id="devpct">--%</span>
-        <span class="strap">
-          <svg width="15" height="21" viewBox="0 0 15 21" fill="none" stroke="currentColor"
-               stroke-width="1.5" aria-hidden="true">
-            <rect x="1.6" y="1.4" width="11.8" height="18.2" rx="4.4"/>
-            <path d="M4.4 6.2h6.2M4.4 14.6h6.2" opacity=".5"/>
-          </svg>
-          <span class="led" id="devled"></span>
-        </span>
+        <span class="strap" data-ic="strap" data-size="19"></span>
+        <span class="led" id="devled"></span>
       </button>
-      <button class="icon" id="theme" title="Switch theme" aria-label="Switch theme">◐</button>
+      <button class="icon" id="theme" title="Switch theme" aria-label="Switch theme" data-ic="theme"></button>
     </div>
   </header>
   <div id="content"><div class="empty">Loading…</div></div>
@@ -365,11 +368,11 @@ nav button:active{transform:scale(.96)}
 </div>
 
 <nav id="nav">
-  <button data-tab="today" aria-selected="true"><span class="g">◎</span>Today</button>
-  <button data-tab="journal" aria-selected="false"><span class="g">✎</span>Journal</button>
-  <button data-tab="activities" aria-selected="false"><span class="g">⚡</span>Activity</button>
-  <button data-tab="insights" aria-selected="false"><span class="g">◈</span>Insights</button>
-  <button data-tab="learning" aria-selected="false"><span class="g">◐</span>Learning</button>
+  <button data-tab="today" aria-selected="true"><span class="g" data-ic="nav_today"></span>Today</button>
+  <button data-tab="journal" aria-selected="false"><span class="g" data-ic="nav_journal"></span>Journal</button>
+  <button data-tab="activities" aria-selected="false"><span class="g" data-ic="nav_activity"></span>Activity</button>
+  <button data-tab="insights" aria-selected="false"><span class="g" data-ic="nav_insights"></span>Insights</button>
+  <button data-tab="learning" aria-selected="false"><span class="g" data-ic="nav_learning"></span>Learning</button>
 </nav>
 
 <script>
@@ -380,8 +383,63 @@ const COMMON_TAGS = ["alcohol","caffeine","late_meal","late_screen","stress","tr
   "sick","injury","nap","meditation","sauna","cold_plunge","social","early_night"];
 const ACTIVITY_TYPES = ["run","walk","cycle","swim","lift","hiit","yoga","sport",
   "sleep","sedentary","other"];
-const GLYPH = {run:"🏃",walk:"🚶",cycle:"🚲",swim:"🏊",lift:"🏋",hiit:"🔥",yoga:"🧘",
-  sport:"⚽",sleep:"🌙",sedentary:"🪑",other:"•",hard_workout:"🔥",workout:"💪",cardio:"❤"};
+// Thin-line icon set, 24x24, 1.5px stroke. No emoji anywhere in the UI.
+const ICONS = {
+  // --- activities ---
+  run:`<circle cx="15.5" cy="4.2" r="2.1"/><path d="M13.6 8.1 10.4 12.4l3.1 2.6-1.1 5.7"/><path d="M10.4 12.4 6.2 13.6 4.4 18"/><path d="M14.2 9.6l3.6 1.7 2.6-1.4"/>`,
+  walk:`<circle cx="13.2" cy="4.2" r="2.1"/><path d="M12.4 8.2 10 12.6l2.6 2.3-.7 5.6"/><path d="M10 12.6 7.6 15l-.5 5.2"/><path d="M12.9 9.4l3 1.6"/>`,
+  cycle:`<circle cx="5.4" cy="16.6" r="3.6"/><circle cx="18.6" cy="16.6" r="3.6"/><path d="M5.4 16.6h5.1l3.4-6.1 4.7 6.1"/><path d="M9.1 10.5h4"/><circle cx="16.4" cy="4.3" r="1.7"/><path d="M13.9 10.5 16.4 7l2.9 3.2"/>`,
+  swim:`<circle cx="17.4" cy="6.6" r="1.9"/><path d="M4 12.4l4.6-2.2 3.6 2.2 3.4-2.4"/><path d="M2.6 17.2c1.7 0 1.7 1.4 3.5 1.4s1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4"/>`,
+  lift:`<path d="M3 9.4v5.2M6 7.6v8.8M18 7.6v8.8M21 9.4v5.2M6 12h12"/>`,
+  hiit:`<path d="M12 21c3.4 0 6-2.5 6-5.7 0-3.9-3-5.4-3.4-9.3-1.6.9-2.6 2.5-2.6 4.3 0 .8-.7 1.4-1.4 1-.9-.5-1.4-1.5-1.4-2.6C7.5 10.2 6 12.4 6 15.3 6 18.5 8.6 21 12 21z"/>`,
+  yoga:`<circle cx="12" cy="4.4" r="2"/><path d="M12 6.8v5.6"/><path d="M12 9.6 7.2 13.2M12 9.6l4.8 3.6"/><path d="M4.6 18.6c1.5-2.8 4.2-4.4 7.4-4.4s5.9 1.6 7.4 4.4z"/>`,
+  sport:`<circle cx="12" cy="12" r="8.4"/><path d="M12 3.6 9.4 9.2l2.6 4.4 4.6-.6 2.6-5.4"/><path d="M9.4 9.2 3.9 10.4M12 13.6l-2.2 5.2M16.6 13l3 4.4"/>`,
+  sleep:`<path d="M20.4 14.6A8.4 8.4 0 0 1 9.4 3.6a8.4 8.4 0 1 0 11 11z"/>`,
+  sedentary:`<path d="M7.2 20V5.4"/><path d="M7.2 13.4h10.4"/><path d="M17.6 13.4V20"/><path d="M7.2 5.4c2 0 3.2 1.1 3.2 2.6"/>`,
+  activity:`<path d="M2.4 12h4.2l2.4-6 4.2 12 2.4-6h6"/>`,
+
+  // --- navigation ---
+  nav_today:`<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="3.4"/>`,
+  nav_journal:`<path d="M16.6 3.4a2.3 2.3 0 0 1 3.3 3.3L8.6 18l-4.2 1.2 1.2-4.2z"/><path d="M14.8 5.2l3.3 3.3"/>`,
+  nav_activity:`<path d="M2.4 12h4.2l2.4-6 4.2 12 2.4-6h6"/>`,
+  nav_insights:`<path d="M4 20V9.6M9.8 20V4.4M15.6 20v-7.8M21.4 20v-4.6"/>`,
+  nav_learning:`<path d="M12 2.8 22 8l-10 5.2L2 8z"/><path d="M6.4 10.6v5.2c0 1.8 2.5 3.2 5.6 3.2s5.6-1.4 5.6-3.2v-5.2"/>`,
+
+  // --- status ---
+  warning:`<path d="M12 3.6 2.6 20h18.8z"/><path d="M12 9.4v4.6M12 17.2v.1"/>`,
+  notice:`<circle cx="12" cy="12" r="8.6"/><path d="M12 7.6v5M12 15.8v.1"/>`,
+  info:`<circle cx="12" cy="12" r="8.6"/><path d="M8.2 12.2l2.6 2.6 5-5.6"/>`,
+
+  // --- ui ---
+  chevron_left:`<path d="M14.8 5.4 8.2 12l6.6 6.6"/>`,
+  chevron_right:`<path d="M9.2 5.4 15.8 12l-6.6 6.6"/>`,
+  theme:`<circle cx="12" cy="12" r="8.4"/><path d="M12 3.6v16.8a8.4 8.4 0 0 0 0-16.8z" fill="currentColor" stroke="none"/>`,
+  bolt:`<path d="M13.4 2.6 5 13.6h6l-.4 7.8L19 10.4h-6z"/>`,
+  search:`<circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6 20.4 20.4"/>`,
+  plus:`<path d="M12 5v14M5 12h14"/>`,
+  trash:`<path d="M4.6 6.6h14.8M9.4 6.6V4.4h5.2v2.2"/><path d="M6.6 6.6l1 12.4h8.8l1-12.4"/><path d="M10.2 10.2v5.4M13.8 10.2v5.4"/>`,
+  check:`<path d="M4.6 12.6 9.4 17.4 19.4 6.6"/>`,
+  strap:`<rect x="6.4" y="2.6" width="11.2" height="18.8" rx="4.4"/><path d="M9.2 7.6h5.6M9.2 16.4h5.6"/>`,
+  lungs:`<path d="M12 3.4v8.2"/><path d="M12 11.6c0 5-2.4 7.4-4.8 7.4-1.9 0-3.6-1.3-3.6-3.6 0-2.7 1.3-5 2.4-7.2"/><path d="M12 11.6c0 5 2.4 7.4 4.8 7.4 1.9 0 3.6-1.3 3.6-3.6 0-2.7-1.3-5-2.4-7.2"/>`,
+  droplet:`<path d="M12 3.2c3.6 4.8 6 7.2 6 10.8a6 6 0 0 1-12 0c0-3.6 2.4-6 6-10.8z"/>`,
+  heart:`<path d="M20.4 7.8a4.2 4.2 0 0 0-7.2-2.9A4.2 4.2 0 0 0 6 7.8c0 4.3 7.2 9.6 7.2 9.6"/><path d="M14.4 17.4h3l1.4-2.4 1.6 4.2 1.2-2.4"/>`,
+  thermometer:`<path d="M12 3.4a2.4 2.4 0 0 1 2.4 2.4v7.4a4.2 4.2 0 1 1-4.8 0V5.8A2.4 2.4 0 0 1 12 3.4z"/><path d="M12 8.4v6"/>`,
+};
+
+// Activity labels, including the rule classifier's own vocabulary, mapped to
+// the icon set. Anything unrecognised falls back to the generic pulse.
+const ACT_ICON = {
+  run:"run", walk:"walk", cycle:"cycle", swim:"swim", lift:"lift", hiit:"hiit",
+  yoga:"yoga", sport:"sport", sleep:"sleep", sedentary:"sedentary",
+  hard_workout:"hiit", workout:"lift", cardio:"run", other:"activity",
+};
+
+function icon(name, size = 20, extra = "") {
+  const d = ICONS[name] || ICONS.activity;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+}
 
 function today(){ return new Date().toISOString().slice(0,10); }
 
@@ -416,6 +474,11 @@ async function api(path,opts){
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
+// Static placeholders in the markup are filled from the icon set at boot.
+document.querySelectorAll("[data-ic]").forEach(n => {
+  n.insertAdjacentHTML("afterbegin", icon(n.dataset.ic, +(n.dataset.size || 20)));
+});
+
 // ---------- device status ----------
 // Polled on its own timer so the connection dot stays live no matter which tab
 // is open, and independent of whether records are flowing.
@@ -432,8 +495,9 @@ async function pollDevice(){
   chip.setAttribute("aria-label", `${deviceState.label}${
     deviceState.battery_pct!=null ? `, battery ${Math.round(deviceState.battery_pct)}%` : ""}`);
   if(deviceState.battery_pct != null){
-    pct.textContent = `${Math.round(deviceState.battery_pct)}%${deviceState.charging?"⚡":""}`;
+    pct.textContent = `${Math.round(deviceState.battery_pct)}%`;
     pct.classList.remove("dim");
+    pct.insertAdjacentHTML("beforeend", deviceState.charging ? icon("bolt", 12) : "");
   } else {
     pct.textContent = "--%"; pct.classList.add("dim");
   }
@@ -609,19 +673,9 @@ function wireCharts(root){
   });
 }
 
-const HM_ICONS = {
-  resp:'<path d="M10 3v7M10 10c0 4-2 6-4 6s-3-1-3-3 1-4 2-6M10 10c0 4 2 6 4 6s3-1 3-3-1-4-2-6"/>',
-  spo2:'<path d="M10 3c3 4 5 6 5 9a5 5 0 0 1-10 0c0-3 2-5 5-9z"/>',
-  rhr:'<path d="M17 6.5a3.5 3.5 0 0 0-6-2.4A3.5 3.5 0 0 0 5 6.5c0 3.6 6 8 6 8s6-4.4 6-8z"/>',
-  hrv:'<path d="M2 10h3l2-5 3 10 2.5-7 1.5 2h4"/>',
-  temp:'<path d="M10 3.5a2 2 0 0 1 2 2v6.2a3.5 3.5 0 1 1-4 0V5.5a2 2 0 0 1 2-2z"/>'
-};
+function hmIcon(kind){ return icon({resp:"lungs",spo2:"droplet",rhr:"heart",
+  hrv:"activity",temp:"thermometer"}[kind] || "activity", 20); }
 
-function hmIcon(kind){
-  return `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"
-    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-    stroke-linejoin="round" aria-hidden="true">${HM_ICONS[kind]}</svg>`;
-}
 
 // The raw ADC channels have no real-world unit, so the number alone means
 // nothing. What is readable is how far it sits from your own baseline.
@@ -670,9 +724,9 @@ function ringBar(t, band){
       <div class="cap">${cap}</div></div>`;
   return `<div class="ringbar" id="ringbar">
     <div class="datenav">
-      <button id="dprev" aria-label="Previous day">‹</button>
+      <button id="dprev" aria-label="Previous day">${icon("chevron_left",19)}</button>
       <span class="lbl">${dateLabel()}</span>
-      <button id="dnext" aria-label="Next day" ${state.date>=today()?"disabled":""}>›</button>
+      <button id="dnext" aria-label="Next day" ${state.date>=today()?"disabled":""}>${icon("chevron_right",19)}</button>
     </div>
     <div class="rings">
       ${cell("Sleep",
@@ -706,10 +760,10 @@ async function renderToday(el, stale){
   }
 
   const band = BANDS[t.recovery.band] || {c:"var(--muted)", t:"Not enough data"};
-  const ICON = {warning:"⚠", notice:"●", info:"✓"};
+  const ICON = {warning:"warning", notice:"notice", info:"info"};
   const sug = (advice.ready && advice.suggestions.length)
     ? advice.suggestions.map(x=>`<div class="sug ${x.severity}">
-        <div class="top"><span class="ic">${ICON[x.severity]||"•"}</span><h3>${esc(x.headline)}</h3></div>
+        <div class="top"><span class="ic">${icon(ICON[x.severity]||"notice",17)}</span><h3>${esc(x.headline)}</h3></div>
         <p>${esc(x.detail)}</p>
         <details class="more"><summary>confidence: ${x.confidence}</summary>
           <p>${esc(advice.disclaimer)}</p></details></div>`).join("")
@@ -884,7 +938,7 @@ async function renderJournal(el, stale){
   </div>
   <div class="card"><h2>Last 30 days</h2>
     ${all.entries.length ? all.entries.slice().reverse().slice(0,14).map(e=>`
-      <div class="arow"><div class="ic" style="background:var(--sleep-dim)">✎</div>
+      <div class="arow"><div class="ic" style="background:var(--sleep-dim)">${icon("nav_journal",19)}</div>
         <div class="m"><div class="t">${e.date.slice(5)}</div>
           <div class="s">${esc((e.tags||[]).join(", ")||"nothing logged")}</div></div></div>`).join("")
       : `<div class="muted">Nothing logged yet.</div>`}
@@ -978,19 +1032,23 @@ function actRow(a){
   const label=a.confirmed_type||a.detected_type||"unknown";
   const opts=Array.from(new Set([...ACTIVITY_TYPES,label]))
     .map(t=>`<option ${t===label?"selected":""}>${esc(t)}</option>`).join("");
-  const intensity = Math.min(1,(a.features&&a.features.hr_reserve_mean)||0);
+  const family = label === "sleep" ? "sleep"
+    : ["hard_workout","hiit","run"].includes(label) ? "hot" : "strain";
+  const tint = {sleep:["var(--sleep-dim)","var(--sleep)"],
+                hot:["var(--hot-dim)","var(--crit)"],
+                strain:["var(--strain-dim)","var(--strain)"]}[family];
   return `<div data-act="${a.id}">
     <div class="arow head" style="cursor:pointer">
-      <div class="ic" style="background:${intensity>0.5?'var(--sleep-dim)':'var(--strain-dim)'}">
-        ${GLYPH[label]||"•"}</div>
+      <div class="ic" style="background:${tint[0]};color:${tint[1]}">
+        ${icon(ACT_ICON[label] || "activity", 21)}</div>
       <div class="m">
-        <div class="t">${esc(label.replace(/_/g," "))}
+        <div class="t up">${esc(label.replace(/_/g," "))}
           ${a.confirmed_type?'<span class="pill ok">confirmed</span>':""}</div>
         <div class="s">${hhmm(a.start_unix)} – ${hhmm(a.end_unix)} · ${mins} min${
           a.confirmed_type?"":` · ${Math.round((a.confidence||0)*100)}% sure`}${
           a.note?` · ${esc(a.note)}`:""}</div>
       </div>
-      <div class="go">›</div>
+      <div class="go">${icon("chevron_right",17)}</div>
     </div>
     <div class="edit" hidden style="padding:0 0 14px">
       <div class="row"><select class="type">${opts}</select></div>
