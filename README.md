@@ -71,6 +71,11 @@ The server also learns from your data over time — see
   signal from concordant deviations in resting HR, HRV, skin temperature and
   respiration.
 
+The dashboard is dark by default with a light toggle, leads with a recovery
+ring plus strain and sleep meters, and uses a bottom tab bar on phones. Colour
+carries meaning only alongside a label, effect sizes are grouped by outcome so
+units never share an axis, and charts have a hover/touch readout.
+
 Every one of these stays off until it has enough data to be trustworthy, and
 the **Learning** tab shows what is missing and roughly how long it will take —
 typically a few days for activity recognition, about two weeks for insights.
