@@ -178,6 +178,31 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
 .hm .c .v.none{color:var(--muted);font-weight:400}
 
+/* ---- body tab ---- */
+.bigstat{font-size:44px;font-weight:700;letter-spacing:-.04em;line-height:1.05;
+  display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.bigstat span{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:0}
+.bl{padding:11px 0;border-top:1px solid var(--line)}
+.bl:first-child{border-top:none}
+.bl-k{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
+.bl-v{font-size:22px;font-weight:700;letter-spacing:-.03em;margin-top:3px;
+  font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px}
+.bl-v span{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:0}
+.bl-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.grid3 .bl{border-top:none;padding:0}
+.scale{position:relative;height:8px;border-radius:4px;overflow:hidden;margin-top:16px;
+  background:var(--track)}
+.scale i{position:absolute;top:0;height:8px;opacity:.5}
+.scale .mark{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;
+  background:var(--ink);box-shadow:0 0 0 2px var(--card)}
+.scalekey{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);
+  margin-top:6px}
+.nightbar{position:relative;height:8px;background:var(--track);border-radius:4px;margin-top:14px}
+.nightbar i{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;
+  background:var(--sleep);box-shadow:0 0 0 2px var(--card)}
+.nightbar .mid{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--axis)}
+
 /* ---- recent days as rows, not a spreadsheet ---- */
 .dayrow{display:flex;align-items:center;gap:12px;padding:12px 0}
 .dayrow+.dayrow{border-top:1px solid var(--line)}
@@ -383,6 +408,7 @@ nav button:active{transform:scale(.96)}
   <button data-tab="today" aria-selected="true"><span class="g" data-ic="nav_today"></span>Today</button>
   <button data-tab="journal" aria-selected="false"><span class="g" data-ic="nav_journal"></span>Journal</button>
   <button data-tab="activities" aria-selected="false"><span class="g" data-ic="nav_activity"></span>Activity</button>
+  <button data-tab="body" aria-selected="false"><span class="g" data-ic="nav_body"></span>Body</button>
   <button data-tab="insights" aria-selected="false"><span class="g" data-ic="nav_insights"></span>Insights</button>
   <button data-tab="learning" aria-selected="false"><span class="g" data-ic="nav_learning"></span>Learning</button>
 </nav>
@@ -416,6 +442,9 @@ const ICONS = {
   nav_activity:`<path d="M2.4 12h4.2l2.4-6 4.2 12 2.4-6h6"/>`,
   nav_insights:`<path d="M4 20V9.6M9.8 20V4.4M15.6 20v-7.8M21.4 20v-4.6"/>`,
   nav_learning:`<path d="M12 2.8 22 8l-10 5.2L2 8z"/><path d="M6.4 10.6v5.2c0 1.8 2.5 3.2 5.6 3.2s5.6-1.4 5.6-3.2v-5.2"/>`,
+  nav_body:`<path d="M12 2.6a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/><path d="M12 6.8v7M5.6 9.4h12.8M12 13.8 8.4 21M12 13.8 15.6 21"/>`,
+  target:`<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="4.4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/>`,
+  moon_clock:`<circle cx="12" cy="12" r="8.6"/><path d="M12 7.2V12l3.2 1.9"/>`,
 
   // --- status ---
   warning:`<path d="M12 3.6 2.6 20h18.8z"/><path d="M12 9.4v4.6M12 17.2v.1"/>`,
@@ -936,8 +965,9 @@ function statsLine(s){
 
 // ---------- Journal ----------
 async function renderJournal(el, stale){
-  const [entry, all] = await Promise.all([
-    api(`/api/journal/${state.date}`), api("/api/journal?days=30")
+  const [entry, all, intake] = await Promise.all([
+    api(`/api/journal/${state.date}`), api("/api/journal?days=30"),
+    api(`/api/intake?date=${state.date}`).catch(()=>({entries:[],presets:{}}))
   ]);
   if(stale()) return;
   const known = Array.from(new Set([...COMMON_TAGS, ...(all.known_tags||[])])).sort();
@@ -962,6 +992,35 @@ async function renderJournal(el, stale){
     <div class="muted" style="margin-top:14px">Log ordinary days too. A factor can only
       be tested if there are days both with and without it.</div>
   </div>
+  <div class="card"><h2>Caffeine &amp; alcohol</h2>
+    <div class="muted" style="margin-top:-6px;margin-bottom:12px">
+      Log the time, not just the day — the whole point is how much is still on
+      board when you go to sleep.</div>
+    <div class="row">
+      <select id="isub" style="flex:0 0 118px">
+        <option value="caffeine">Caffeine</option>
+        <option value="alcohol">Alcohol</option>
+      </select>
+      <select id="ipreset"></select>
+      <input type="time" id="itime" style="flex:0 0 108px" value="${
+        new Date().toTimeString().slice(0,5)}">
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="iadd">Log it</button>
+      <span class="muted" id="imsg" style="text-align:right"></span>
+    </div>
+    ${intake.entries.length ? `<div style="margin-top:14px">${intake.entries.map(e=>`
+      <div class="arow" data-intake="${e.id}">
+        <div class="ic" style="background:${e.substance==="alcohol"?"var(--sleep-dim)":"var(--strain-dim)"};color:${
+          e.substance==="alcohol"?"var(--sleep)":"var(--strain)"}">
+          ${icon(e.substance==="alcohol"?"droplet":"activity",19)}</div>
+        <div class="m"><div class="t up">${esc(e.label||e.substance)}</div>
+          <div class="s">${new Date(e.at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+            · ${e.amount}${e.substance==="caffeine"?" mg":" units"}</div></div>
+        <button class="btn ghost idel">Remove</button>
+      </div>`).join("")}</div>` : `<div class="muted" style="margin-top:12px">Nothing logged.</div>`}
+  </div>
+
   <div class="card"><h2>Last 30 days</h2>
     ${all.entries.length ? all.entries.slice().reverse().slice(0,14).map(e=>`
       <div class="arow"><div class="ic" style="background:var(--sleep-dim)">${icon("nav_journal",19)}</div>
@@ -979,6 +1038,36 @@ async function renderJournal(el, stale){
       `<button class="chip" data-tag="${esc(v)}" aria-pressed="true">${esc(v.replace(/_/g," "))}</button>`);
     $("#newtag").value="";
   };
+  // Preset list follows the substance, so amounts are a familiar thing to pick.
+  const PRESETS = intake.presets || {};
+  function fillPresets(){
+    const sub = $("#isub").value;
+    const table = sub === "alcohol" ? (PRESETS.alcohol_units||{}) : (PRESETS.caffeine_mg||{});
+    $("#ipreset").innerHTML = Object.entries(table)
+      .map(([k,v])=>`<option value="${v}">${esc(k.replace(/_/g," "))} · ${v}${
+        sub==="alcohol"?" units":" mg"}</option>`).join("");
+  }
+  $("#isub").onchange = fillPresets;
+  fillPresets();
+
+  $("#iadd").onclick = async () => {
+    const [hh,mm] = $("#itime").value.split(":").map(Number);
+    const when = new Date(state.date + "T00:00:00Z");
+    when.setUTCHours(hh, mm, 0, 0);
+    try{
+      await api("/api/intake", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({at: when.toISOString(), substance: $("#isub").value,
+          amount: parseFloat($("#ipreset").value),
+          label: $("#ipreset").selectedOptions[0].textContent.split(" · ")[0]})});
+      render();
+    }catch(err){ say("#imsg", "failed: " + err.message); }
+  };
+  el.querySelectorAll("[data-intake]").forEach(node => {
+    node.querySelector(".idel").onclick = async () => {
+      await api(`/api/intake/${node.dataset.intake}`, {method:"DELETE"}); render();
+    };
+  });
+
   $("#jdate").onchange = e => { state.date=e.target.value; render(); };
   $("#jsave").onclick = async () => {
     const tags=Array.from(document.querySelectorAll('[data-tag][aria-pressed="true"]')).map(b=>b.dataset.tag);
@@ -1083,6 +1172,143 @@ function actRow(a){
       <div class="row" style="margin-top:9px">
         <button class="btn save">Save</button>
         <button class="btn ghost del" style="flex:0 0 auto">Delete</button></div>
+    </div>
+  </div>`;
+}
+
+// ---------- Body ----------
+function statLine(label, value, sub){
+  return `<div class="bl"><div class="bl-k">${esc(label)}</div>
+    <div class="bl-v">${value}</div>${sub?`<div class="bl-s">${sub}</div>`:""}</div>`;
+}
+
+function notReady(reason){
+  return `<div class="muted" style="padding:6px 0">${esc(reason || "Not enough data yet.")}</div>`;
+}
+
+async function renderBody(el, stale){
+  const d = await api(`/api/advanced?date=${state.date}&days=60`);
+  if(stale()) return;
+
+  const dfa = d.hrv_nonlinear.dfa_alpha1, se = d.hrv_nonlinear.sample_entropy;
+  const band = {aerobic:css("--good"), transitional:css("--warn"), threshold:css("--crit")};
+  const cir = d.circadian, hrr = d.recovery_velocity, ac = d.acwr;
+  const tgt = d.strain_target, eff = d.efficiency, deb = d.sleep_debt;
+
+  el.innerHTML = `<div class="stagger">
+    <div class="card"><h2>Autonomic balance</h2>
+      ${dfa.usable ? `
+        <div class="bigstat" style="color:${band[dfa.band]||css('--muted')}">
+          ${dfa.alpha1}<span>DFA α1</span></div>
+        <div class="muted" style="margin-top:4px">${esc(dfa.band)} · from
+          ${dfa.beats} clean beats over ${esc(d.hrv_nonlinear.source.replace("_"," "))}
+          · ${(dfa.artifact_rate*100).toFixed(1)}% artifacts</div>
+        <div class="scale"><i style="left:0;width:33%;background:${css('--crit')}"></i>
+          <i style="left:33%;width:25%;background:${css('--warn')}"></i>
+          <i style="left:58%;width:42%;background:${css('--good')}"></i>
+          <span class="mark" style="left:${Math.max(0,Math.min(100,dfa.alpha1/1.5*100))}%"></span></div>
+        <div class="scalekey"><span>0 · threshold</span><span>0.75</span><span>1.5 · correlated</span></div>
+      ` : notReady(dfa.reason)}
+      ${se.usable ? `<div class="bl" style="margin-top:14px">
+        <div class="bl-k">Sample entropy</div><div class="bl-v">${se.sample_entropy}</div>
+        <div class="bl-s">higher = less predictable rhythm</div></div>` : ""}
+      <details class="more"><summary>what this measures</summary>
+        <p>RMSSD says how much beat-to-beat variability there is. DFA α1 describes its
+        structure — whether the variation is correlated or random. Above 0.75 is the
+        correlated, low-intensity pattern; below 0.5 is what shows up at or past the
+        aerobic threshold. It is very sensitive to missed beats, so the artifact rate
+        is shown and a dirty window returns nothing rather than a confident number.
+        The reference bands come from chest-strap studies; a wrist optical sensor is
+        noisier.</p></details>
+    </div>
+
+    <div class="card"><h2>Circadian phase</h2>
+      ${cir.usable ? `
+        <div class="bl"><div class="bl-k">Lowest heart rate</div>
+          <div class="bl-v" style="color:${cir.aligned?css('--good'):css('--warn')}">
+            ${String(Math.floor(cir.trough_local_hour)).padStart(2,"0")}:${
+              String(Math.round((cir.trough_local_hour%1)*60)).padStart(2,"0")}
+            <span>${cir.trough_hr} bpm</span></div>
+          <div class="bl-s">${Math.round(cir.position_in_night*100)}% through the night —
+            ${esc(cir.half)} half</div></div>
+        <div class="nightbar"><i style="left:${cir.position_in_night*100}%"></i>
+          <span class="mid"></span></div>
+        <div class="scalekey"><span>asleep</span><span>midpoint</span><span>awake</span></div>
+        <div class="muted" style="margin-top:10px">${esc(cir.note)}</div>
+      ` : notReady(cir.reason)}
+    </div>
+
+    <div class="card"><h2>Recovery velocity</h2>
+      ${hrr.usable ? `
+        <div class="bigstat" style="color:${
+          hrr.hrr_60s_band==="strong"?css("--good"):hrr.hrr_60s_band==="typical"?css("--warn"):css("--crit")}">
+          −${hrr.hrr_1min}<span>bpm in 60 s</span></div>
+        <div class="grid3">
+          ${statLine("After 5 min", "−"+(hrr.hrr_5min ?? "–"), "bpm")}
+          ${statLine("After 15 min", "−"+(hrr.hrr_15min ?? "–"), "bpm")}
+          ${statLine("Back to rest", hrr.fraction_recovered_5min!=null
+            ? Math.round(hrr.fraction_recovered_5min*100)+"%" : "–", "at 5 min")}
+        </div>
+        <div class="muted" style="margin-top:10px">Measured after ${esc(hrr.after||"the day's hardest effort")},
+          peak ${hrr.peak_hr} bpm. A steeper fall means faster parasympathetic reactivation.</div>
+      ` : notReady(hrr.reason)}
+    </div>
+
+    <div class="card"><h2>Training load</h2>
+      ${ac.usable ? `
+        <div class="bigstat" style="color:${
+          ac.band==="optimal"?css("--good"):ac.band==="spike"?css("--crit"):css("--warn")}">
+          ${ac.ratio}<span>acute : chronic</span></div>
+        <div class="grid3">
+          ${statLine("Acute", ac.acute, `${ac.acute_days}-day`)}
+          ${statLine("Chronic", ac.chronic, `${ac.chronic_days}-day`)}
+          ${statLine("Band", `<span style="text-transform:capitalize">${esc(ac.band)}</span>`, "")}
+        </div>
+        <div class="muted" style="margin-top:10px">${esc(ac.note)}</div>
+        <details class="more"><summary>why no injury-risk number</summary>
+          <p>${esc(ac.caveat)}</p></details>
+      ` : notReady(ac.reason)}
+    </div>
+
+    <div class="card"><h2>Today's strain target</h2>
+      ${tgt.usable ? `
+        <div class="bigstat" style="color:${css('--strain')}">${tgt.target}
+          <span>of 21 · aim ${tgt.range[0]}–${tgt.range[1]}</span></div>
+        <div class="muted" style="margin-top:8px">${esc(tgt.note)}</div>
+      ` : notReady(tgt.reason)}
+    </div>
+
+    <div class="card"><h2>Sleep debt payback</h2>
+      ${deb.options && deb.options.length ? `
+        <div class="bigstat" style="color:${css('--sleep')}">
+          ${(deb.debt_minutes/60).toFixed(1)}<span>hours owed</span></div>
+        ${deb.options.map(o=>`<div class="bl">
+          <div class="bl-k">Over ${o.nights} nights</div>
+          <div class="bl-v">+${o.extra_minutes_per_night}<span>min/night</span></div>
+          <div class="bl-s">a ${Math.floor(o.target_minutes_per_night/60)}h
+            ${o.target_minutes_per_night%60}m target</div></div>`).join("")}
+        <details class="more"><summary>how this is modelled</summary>
+          <p>Sleep debt does not clear one-for-one, so extra sleep pays it down at
+          ${Math.round((deb.model?.payback_efficiency ?? 0.55)*100)}% of face value and
+          old debt fades slowly on its own. Those constants are a convention, not a
+          measurement — this is a model that gives you an actionable target, not
+          physiology.</p></details>
+      ` : `<div class="muted">${esc(deb.note || "No meaningful debt right now.")}</div>`}
+    </div>
+
+    <div class="card"><h2>Effort efficiency</h2>
+      ${eff.usable ? eff.activities.map(a=>`<div class="bl">
+          <div class="bl-k" style="text-transform:capitalize">${esc(a.activity)}</div>
+          <div class="bl-v" style="color:${
+            a.direction==="improving"?css("--good"):a.direction==="declining"?css("--crit"):css("--muted")}">
+            ${a.hr_change_per_week>0?"+":""}${a.hr_change_per_week}<span>bpm/week</span></div>
+          <div class="bl-s">${esc(a.note)} ${a.bouts} bouts over ${a.span_days} days.</div>
+        </div>`).join("")
+      : `<div class="muted">Nothing comparable yet.</div>`}
+      ${Object.keys(eff.skipped||{}).length?`<div class="muted" style="margin-top:10px">
+        ${Object.entries(eff.skipped).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join("<br>")}</div>`:""}
+      <details class="more"><summary>about “output”</summary>
+        <p>${esc(eff.caveat||"")}</p></details>
     </div>
   </div>`;
 }
@@ -1215,7 +1441,7 @@ async function renderLearning(el, stale){
 
 // ---------- shell ----------
 const TABS={today:renderToday, journal:renderJournal, activities:renderActivities,
-            insights:renderInsights, learning:renderLearning};
+            body:renderBody, insights:renderInsights, learning:renderLearning};
 // A slow render must never overwrite a tab the user has since switched to.
 let renderToken = 0;
 async function render(){

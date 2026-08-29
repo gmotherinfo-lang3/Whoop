@@ -146,3 +146,99 @@ defaults are deliberately conservative.
 - **Recovery, strain and sleep are approximations** from published methods, not
   WHOOP's models. They track your trends consistently; they will not match the
   official app.
+
+---
+
+# Advanced analytics
+
+Seven further models, in the **Body** tab. Each states what it can and cannot
+support.
+
+## Non-linear HRV — DFA α1 and sample entropy
+
+RMSSD measures how *much* beat-to-beat variability there is. DFA α1 measures its
+*structure* — whether the variation is correlated or random — which tracks
+autonomic balance rather than autonomic volume.
+
+| α1 | Reading |
+|---|---|
+| > 0.75 | correlated, low-intensity / aerobic |
+| 0.5 – 0.75 | transitional |
+| < 0.5 | uncorrelated, at or past the aerobic threshold |
+
+The implementation is validated against signals with known scaling exponents:
+white noise → 0.5, 1/f pink noise → 1.0, Brownian → 1.5, all within 0.12.
+
+**α1 is exquisitely artifact-sensitive.** One missed beat in a few hundred can
+move it by 0.2 — the width of an entire band. So beats are cleaned against a
+rolling local median, the artifact rate is reported with every value, and above
+5% artifacts nothing is reported at all. The reference bands come from
+chest-strap studies; a wrist optical sensor is a noisier source.
+
+## Circadian phase — HR trough timing
+
+The clock hour of the lowest smoothed heart rate, and where it falls in the
+night. A trough in the first half is the settled pattern; pushed into the second
+half it commonly follows late eating, alcohol, a warm room or a shifted body
+clock. **It measures the timing, not the cause** — it cannot tell those apart.
+
+## Recovery velocity
+
+How far heart rate falls 1, 5 and 15 minutes after the day's hardest bout, plus
+the fraction of the way back to rest at 5 minutes (scale-free, so comparable
+across sessions of different intensity). Steeper is faster parasympathetic
+reactivation.
+
+## Training load — EWMA ACWR
+
+Acute (7-day) against chronic (28-day) load, exponentially weighted at the
+standard `2/(N+1)`, so recent days count for more than a flat average gives
+them.
+
+**No injury-risk number is shown, deliberately.** The popular "above 1.5 means
+injury risk" claim comes from work that has been widely challenged for
+mathematical coupling and spurious correlation. The ratio describes your load
+trend; that is what it can honestly support.
+
+## Sleep debt payback
+
+Debt compounds rather than summing: extra sleep pays it down at 55% of face
+value and old debt fades ~6% a night. The plan is solved by simulating the same
+model forward, so the figure and the plan cannot drift apart, and the answer is
+rounded **up** so the number reported genuinely clears the debt it claims to.
+The constants are a convention, not physiology.
+
+## Today's strain target
+
+Fits next-day recovery on today's recovery and today's strain (ridge, small-n),
+then solves for the strain that still leaves tomorrow at or above your floor.
+Needs 21 paired days. If the fit is weak (R² < 0.15) or says strain costs you
+nothing, it falls back to a standard recovery-to-strain curve and says so.
+
+## Effort efficiency — the honest caveat
+
+Falling heart rate at the same external workload means adaptation; rising means
+under-recovery or illness. That needs a measure of external workload, and **this
+strap has none** — no GPS, no power meter, no cadence. The only movement signal
+is wrist acceleration.
+
+So "output" here is wrist movement intensity: a fair proxy for running and
+walking, weak for rowing, and not meaningful for cycling, lifting or swimming.
+Only locomotion types are reported; the rest are skipped with the reason rather
+than given a fabricated number. Pair the strap with phone GPS or a power meter
+and this becomes a real efficiency measure.
+
+## Caffeine and alcohol overlay
+
+Logged with timestamps (in **Journal**), because the point is how much is still
+circulating at lights out.
+
+**These clear differently, and modelling both as a half-life is wrong for one.**
+Caffeine is first-order — about a 5-hour half-life. Alcohol at ordinary doses is
+**zero-order**: cleared at a near-constant ~1 standard drink an hour regardless
+of how much is aboard. An exponential model would badly understate how long a
+heavy night lingers.
+
+Correlated against overnight HRV, resting heart rate and sleep duration.
+**Not** against slow-wave sleep percentage — sleep staging needs signals this
+strap does not expose, so it is not estimated.

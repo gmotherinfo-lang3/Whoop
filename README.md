@@ -70,6 +70,11 @@ The server also learns from your data over time — see
 - **Suggestions.** Push today / take it easy / sleep debt, plus an illness
   signal from concordant deviations in resting HR, HRV, skin temperature and
   respiration.
+- **Advanced physiology** (Body tab). Non-linear HRV (DFA α1, sample entropy),
+  circadian phase from HR-trough timing, post-effort recovery velocity, EWMA
+  acute:chronic load, a compounding sleep-debt payback plan, a learned daily
+  strain target, and a caffeine/alcohol overlay against the night that
+  followed.
 
 Iconography is a hand-built thin-line set (24px grid, 1.5px stroke) rendered as
 inline SVG — no emoji and no icon font, so nothing is fetched at runtime and

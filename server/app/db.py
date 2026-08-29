@@ -90,6 +90,18 @@ CREATE TABLE IF NOT EXISTS device_status (
     payload    TEXT NOT NULL
 );
 
+-- Timestamped intake, for the caffeine/alcohol overlay. Separate from the
+-- day-level journal because the whole point is the time of day.
+CREATE TABLE IF NOT EXISTS intake (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    at         TEXT NOT NULL,       -- ISO8601, UTC
+    substance  TEXT NOT NULL,       -- 'caffeine' or 'alcohol'
+    amount     REAL NOT NULL,       -- mg for caffeine, standard units for alcohol
+    label      TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_intake_at ON intake(at);
+
 CREATE TABLE IF NOT EXISTS ingest_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     at          TEXT NOT NULL,
@@ -372,6 +384,29 @@ class Database:
         d = dict(r)
         d["payload"] = json.loads(d["payload"])
         return d
+
+    # --- intake -------------------------------------------------------------
+    def add_intake(self, at: str, substance: str, amount: float,
+                   label: str = "") -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO intake (at, substance, amount, label, created_at) "
+                "VALUES (?,?,?,?,datetime('now'))", (at, substance, amount, label))
+            self._conn.commit()
+            return cur.lastrowid
+
+    def intake_between(self, start_iso: str, end_iso: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM intake WHERE at >= ? AND at <= ? ORDER BY at",
+                (start_iso, end_iso)).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_intake(self, intake_id: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM intake WHERE id=?", (intake_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
 
     # --- device status ------------------------------------------------------
     def put_device_status(self, payload: dict[str, Any]) -> None:

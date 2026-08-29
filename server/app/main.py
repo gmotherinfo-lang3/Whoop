@@ -23,10 +23,15 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from .advice import suggest
-from .analytics import summarise_day
+from .analytics import build_epochs, summarise_day
 from .bridge import cached_zip, pushed_config, release
 from .bundle import build_zip, bundle_status, download_allowed, public_base_url
+from .circadian import hr_trough, recovery_velocity
 from .device import describe
+from .efficiency import efficiency_index
+from .hrv_advanced import dfa_alpha1, sample_entropy
+from .substances import CAFFEINE_MG, ALCOHOL_UNITS, curve, overlay
+from .workload import acwr, payback_plan, sleep_debt, strain_target
 from .db import Database
 from .insights import analyse
 from .ml import MODEL_NAME, ActivityClassifier, classify
@@ -63,6 +68,13 @@ class ActivityEdit(BaseModel):
     start_unix: int | None = None
     end_unix: int | None = None
     note: str | None = None
+
+
+class IntakeEntry(BaseModel):
+    at: str
+    substance: str
+    amount: float
+    label: str = ""
 
 
 class ManualActivity(BaseModel):
@@ -404,6 +416,144 @@ def api_advice(date: str | None = None,
     today = _summarise(day)
     history = [_summarise(day - timedelta(days=i)) for i in range(1, baseline_days + 1)]
     return {"date": day.strftime("%Y-%m-%d"), **suggest(today, history)}
+
+
+# --- intake log -------------------------------------------------------------
+@app.post("/api/intake")
+def api_add_intake(entry: IntakeEntry) -> dict[str, Any]:
+    if entry.substance not in ("caffeine", "alcohol"):
+        raise HTTPException(400, "substance must be 'caffeine' or 'alcohol'")
+    if entry.amount <= 0:
+        raise HTTPException(400, "amount must be positive")
+    try:
+        datetime.fromisoformat(entry.at)
+    except ValueError:
+        raise HTTPException(400, "at must be an ISO8601 timestamp")
+    return {"ok": True, "id": db.add_intake(entry.at, entry.substance,
+                                            entry.amount, entry.label)}
+
+
+@app.get("/api/intake")
+def api_intake(date: str) -> dict[str, Any]:
+    day = _parse_date(date)
+    lo, hi = _day_bounds(day)
+    return {
+        "date": date,
+        "entries": db.intake_between(
+            datetime.fromtimestamp(lo - 86400, timezone.utc).isoformat(),
+            datetime.fromtimestamp(hi, timezone.utc).isoformat()),
+        "presets": {"caffeine_mg": CAFFEINE_MG, "alcohol_units": ALCOHOL_UNITS},
+    }
+
+
+@app.delete("/api/intake/{intake_id}")
+def api_delete_intake(intake_id: int) -> dict[str, Any]:
+    if not db.delete_intake(intake_id):
+        raise HTTPException(404, "not found")
+    return {"ok": True}
+
+
+# --- advanced analytics -----------------------------------------------------
+def _sleep_window(summary: dict[str, Any]) -> tuple[int, int] | None:
+    blocks = (summary.get("sleep") or {}).get("blocks") or []
+    if not blocks:
+        return None
+    longest = max(blocks, key=lambda b: b["minutes"])
+    return (int(datetime.fromisoformat(longest["start"]).timestamp()),
+            int(datetime.fromisoformat(longest["end"]).timestamp()))
+
+
+@app.get("/api/advanced")
+def api_advanced(date: str | None = None,
+                 days: int = Query(60, ge=14, le=180)) -> dict[str, Any]:
+    """Non-linear HRV, circadian phase, recovery velocity, load and targets."""
+    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    lo, hi = _day_bounds(day)
+    records = db.range(lo, hi)
+    summary = _summarise(day)
+    epochs = build_epochs(records)
+    out: dict[str, Any] = {"date": day.strftime("%Y-%m-%d")}
+
+    # --- non-linear HRV over the night, where it is least contaminated ---
+    window = _sleep_window(summary)
+    night_rr: list[float] = []
+    if window:
+        for e in epochs:
+            if window[0] <= e.unix < window[1]:
+                night_rr.extend(e.rr)
+    if not night_rr:
+        for e in epochs:
+            night_rr.extend(e.rr)
+    out["hrv_nonlinear"] = {
+        "source": "sleep" if window else "whole_day",
+        "dfa_alpha1": dfa_alpha1(night_rr),
+        "sample_entropy": sample_entropy(night_rr),
+    }
+
+    # --- circadian phase ---
+    out["circadian"] = (hr_trough(epochs, window[0], window[1], TZ_OFFSET_H)
+                        if window else
+                        {"usable": False, "reason": "no sleep block detected"})
+
+    # --- recovery velocity, from the day's hardest bout ---
+    activities = db.activities_range(lo, hi)
+    hardest = max((a for a in activities
+                   if (a.get("features") or {}).get("hr_reserve_mean", 0) > 0.35),
+                  key=lambda a: a["features"]["hr_reserve_mean"], default=None)
+    if hardest:
+        out["recovery_velocity"] = {
+            "after": hardest.get("confirmed_type") or hardest.get("detected_type"),
+            "ended": datetime.fromtimestamp(hardest["end_unix"], timezone.utc).isoformat(),
+            **recovery_velocity(epochs, hardest["end_unix"],
+                                (summary.get("heart_rate") or {}).get("resting")),
+        }
+    else:
+        out["recovery_velocity"] = {"usable": False,
+                                    "reason": "no hard effort detected on this day"}
+
+    # --- load and sleep debt over the window ---
+    history = [_summarise(day - timedelta(days=i)) for i in range(days)][::-1]
+    with_data = [h for h in history if h.get("has_data")]
+    out["acwr"] = acwr([h["strain"]["score"] for h in with_data
+                        if h.get("strain", {}).get("score") is not None])
+
+    need = (summary.get("sleep") or {}).get("need_hours", 8.0) * 60
+    nights = [h["sleep"]["total_minutes"] for h in with_data[-21:]
+              if h.get("sleep", {}).get("total_minutes") is not None]
+    debt = sleep_debt(nights, need)
+    out["sleep_debt"] = {"nights_used": len(nights), **payback_plan(debt, need)}
+
+    # --- strain target from your own next-day response ---
+    pairs = []
+    for i in range(len(with_data) - 1):
+        a, b = with_data[i], with_data[i + 1]
+        if (a.get("recovery", {}).get("score") is not None
+                and a.get("strain", {}).get("score") is not None
+                and b.get("recovery", {}).get("score") is not None):
+            pairs.append({"recovery": a["recovery"]["score"],
+                          "strain": a["strain"]["score"],
+                          "next_recovery": b["recovery"]["score"]})
+    out["strain_target"] = strain_target(
+        (summary.get("recovery") or {}).get("score"), pairs)
+
+    # --- efficiency index over the window ---
+    span_lo, _ = _day_bounds(day - timedelta(days=days))
+    out["efficiency"] = efficiency_index(db.activities_range(span_lo, hi),
+                                         (summary.get("heart_rate") or {}).get("resting"))
+
+    # --- substances against last night ---
+    if window:
+        onset = datetime.fromtimestamp(window[0], timezone.utc)
+        intakes = db.intake_between(
+            (onset - timedelta(hours=24)).isoformat(), onset.isoformat())
+        out["substances"] = overlay(intakes, onset.isoformat(), summary)
+        out["substances"]["curve"] = curve(
+            intakes, (onset - timedelta(hours=12)).isoformat(), hours=24)
+    else:
+        out["substances"] = {"flags": [], "at_sleep_onset": None,
+                             "reason": "no sleep block to compare against"}
+
+    return out
 
 
 # --- bridge update channel --------------------------------------------------
