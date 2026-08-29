@@ -78,6 +78,10 @@ class Config:
             problems.append("no device address set (run `whoop-bridge scan` first)")
         if not self.forward_url:
             problems.append("no forward_url set")
-        elif not self.forward_url.lower().startswith("https://"):
-            problems.append("forward_url must be https:// (biometric data in transit)")
+        else:
+            from .forwarder import is_transport_ok
+            if not is_transport_ok(self.forward_url):
+                problems.append(
+                    "forward_url must be https:// on a public host "
+                    "(plain http:// is allowed only to a private/LAN address)")
         return problems

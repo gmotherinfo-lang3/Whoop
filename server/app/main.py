@@ -17,13 +17,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from .advice import suggest
 from .analytics import summarise_day
+from .bundle import build_zip, bundle_status, download_allowed, public_base_url
 from .db import Database
 from .insights import analyse
 from .ml import MODEL_NAME, ActivityClassifier, classify
@@ -367,6 +368,50 @@ def api_advice(date: str | None = None,
     today = _summarise(day)
     history = [_summarise(day - timedelta(days=i)) for i in range(1, baseline_days + 1)]
     return {"date": day.strftime("%Y-%m-%d"), **suggest(today, history)}
+
+
+# --- laptop setup bundle ----------------------------------------------------
+def _fallback_base() -> str:
+    return "http://127.0.0.1:8000"
+
+
+@app.get("/setup", response_class=HTMLResponse)
+def setup_page(request: Request) -> Any:
+    allowed, reason = download_allowed(dict(request.headers),
+                                       request.client.host if request.client else None)
+    status = bundle_status()
+    return templates.TemplateResponse(request, "setup.html", {
+        "allowed": allowed,
+        "reason": reason if not allowed else "",
+        "ready": status["ready"],
+        "base_url": public_base_url(dict(request.headers), _fallback_base()),
+        "has_token": bool(INGEST_TOKEN),
+    })
+
+
+@app.api_route("/setup/bundle.zip", methods=["GET", "POST"])
+def setup_bundle(request: Request,
+                 cf_access_client_id: str = Form(default=""),
+                 cf_access_client_secret: str = Form(default="")) -> Response:
+    allowed, reason = download_allowed(dict(request.headers),
+                                       request.client.host if request.client else None)
+    if not allowed:
+        raise HTTPException(403, reason)
+    if not INGEST_TOKEN:
+        raise HTTPException(500, "server has no INGEST_TOKEN configured")
+    if not bundle_status()["ready"]:
+        raise HTTPException(
+            500, "laptop files are not in this image. Rebuild from the repository "
+                 "root: docker compose up -d --build")
+
+    data = build_zip(public_base_url(dict(request.headers), _fallback_base()),
+                     INGEST_TOKEN, cf_access_client_id.strip(),
+                     cf_access_client_secret.strip())
+    return Response(
+        content=data, media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="strap-laptop.zip"',
+                 # It contains a credential; never let a proxy or the browser keep it.
+                 "Cache-Control": "no-store, private"})
 
 
 @app.get("/", response_class=HTMLResponse)

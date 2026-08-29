@@ -108,6 +108,10 @@ cd Whoop
 powershell -ExecutionPolicy Bypass -File windows\setup.ps1
 ```
 
+Or, once the server is running, skip the clone entirely: open
+`https://your-server/setup` on the laptop and download a zip of the bridge
+already configured to talk to it.
+
 Then:
 
 ```powershell

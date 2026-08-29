@@ -91,28 +91,45 @@ defence in depth rather than the only lock.
 
 ## 3. Laptop
 
+**Open `https://whoop.yourdomain.com/setup` in a browser on the laptop.** The
+server hands you a zip of the bridge with `config.toml` already filled in with
+its own URL and ingest token — there is nothing to copy across by hand. If you
+use Access, paste a service token into the form first and it is baked in too.
+
+Unzip it and run, in that folder:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File windows\setup.ps1
-.\.venv\Scripts\pip.exe install -e ".[tray]"
+.\.venv\Scripts\whoop-bridge.exe scan
 ```
 
-Edit `config.toml`:
-
-```toml
-[device]
-address = "…"                                  # from: whoop-bridge scan
-
-[forward]
-forward_url = "https://whoop.yourdomain.com/ingest"
-forward_token = ""                             # = INGEST_TOKEN (or env var)
-```
-
-Verify, then run:
+The only thing still missing is your strap's address — paste what `scan` prints
+into `address` in `config.toml`. Then:
 
 ```powershell
 .\.venv\Scripts\whoop-bridge.exe test-endpoint
+.\.venv\Scripts\pip.exe install -e ".[tray]"
 .\.venv\Scripts\pythonw.exe -m tray.whoop_tray
 ```
+
+The bundle repeats these steps in its own `START-HERE.md`.
+
+### About that download
+
+It contains a live credential — the ingest token, which can write to your
+server — so `/setup` is gated. It is served only to a request Cloudflare Access
+has authenticated, or to a client on a private/LAN address. A request arriving
+through the tunnel without an Access login gets a 403.
+
+That check reads headers set by cloudflared, which is sound **only because the
+app binds to `127.0.0.1`** and nothing else can reach it. Do not publish port
+8000 directly. `SETUP_DOWNLOAD=off` disables the endpoint entirely;
+`SETUP_DOWNLOAD=open` removes the check and should never be used on the
+internet.
+
+Setting up over the LAN instead? The generated config will use `http://` to a
+private address, which the bridge accepts (and logs a warning about). Plain
+HTTP to a *public* host is still refused.
 
 To start the tray at logon, put a shortcut to that last command in
 `shell:startup`. For headless operation instead, use

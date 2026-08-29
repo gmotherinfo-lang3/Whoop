@@ -15,15 +15,40 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import uuid
+from urllib.parse import urlparse
 
 import httpx
 
 log = logging.getLogger("whoop.forward")
 
 RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
+
+
+def is_private_host(host: str | None) -> bool:
+    """True for a loopback/private address or a .local / bare LAN name."""
+    if not host:
+        return False
+    if host in ("localhost",) or host.endswith((".local", ".lan", ".internal")):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or ip.is_link_local
+
+
+def is_transport_ok(url: str) -> bool:
+    """HTTPS anywhere; plain HTTP only to a host that cannot leave the LAN."""
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return True
+    if parsed.scheme == "http":
+        return is_private_host(parsed.hostname)
+    return False
 
 
 class Forwarder:
@@ -35,9 +60,14 @@ class Forwarder:
                  cf_access_client_secret: str | None = None):
         if not url:
             raise ValueError("no forward URL configured")
-        if not url.lower().startswith("https://"):
+        if not is_transport_ok(url):
             # Biometric data over plain HTTP would be readable on the wire.
-            raise ValueError(f"forward URL must be https://, got {url!r}")
+            raise ValueError(
+                f"forward URL must be https:// on a public host, got {url!r}. "
+                "Plain http:// is permitted only to a private or loopback address.")
+        if url.lower().startswith("http://"):
+            log.warning("forwarding over plain HTTP to %s - unencrypted, so only "
+                        "acceptable on a network you trust", urlparse(url).hostname)
         self.spool = spool
         self.url = url
         self.token = token

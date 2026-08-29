@@ -1,0 +1,20 @@
+# The build context is the repo root, so keep the junk out of it.
+.git
+.github
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+tests
+*.db
+*.db-wal
+*.db-shm
+*.log
+config.toml
+.env
+build
+dist
+*.egg-info
