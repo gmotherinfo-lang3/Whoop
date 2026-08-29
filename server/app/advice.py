@@ -30,9 +30,10 @@ class Suggestion:
     id: str
     severity: str            # "info", "notice", "warning"
     headline: str
-    detail: str
+    detail: str              # one or two lines, the takeaway
     evidence: dict[str, Any]
     confidence: str          # "low", "moderate", "high"
+    more: str = ""           # the caveats and reasoning, shown on request
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,19 +124,17 @@ def _illness(today: dict[str, Any], past: Sequence[dict[str, Any]]) -> list[Sugg
         return []
 
     strong = len(flagged) >= 3
+    names = ", ".join(n.replace("_", " ") for n in flagged)
     return [Suggestion(
         id="possible_illness",
         severity="warning" if strong else "notice",
-        headline=("Several markers are off at once — this is what the run-up to "
-                  "illness often looks like"
-                  if strong else
-                  "A couple of markers are off — worth keeping an eye on"),
-        detail=(f"{len(flagged)} of {len(markers)} markers deviate from your baseline "
-                f"by more than {Z_FLAG} standard deviations: {', '.join(flagged)}. "
-                "Illness produces this pattern, but so do alcohol, a hard session, "
-                "heat, dehydration, poor sleep and stress. This cannot tell them "
-                "apart. Treat it as a prompt to check in with how you feel, "
-                "not as a diagnosis."),
+        headline="Body under strain" if strong else "Something is slightly off",
+        detail=(f"{len(flagged)} of {len(markers)} markers off baseline — {names}. "
+                "A prompt to check in with how you feel, not as a diagnosis."),
+        more=(f"Each marker is more than {Z_FLAG} standard deviations from your own "
+              f"{len(past)}-day baseline. Illness produces this pattern, but so do "
+              "alcohol, a hard session, heat, dehydration, poor sleep and stress — "
+              "this cannot tell them apart."),
         evidence={"markers": markers, "flagged": flagged,
                   "threshold_sd": Z_FLAG, "baseline_days": len(past)},
         confidence="moderate" if strong else "low",
@@ -159,36 +158,35 @@ def _readiness(today: dict[str, Any], past: Sequence[dict[str, Any]]) -> list[Su
     if score >= 75:
         return [Suggestion(
             id="ready_to_push", severity="info",
-            headline="Well recovered — a good day to push",
-            detail=(f"Recovery is {score:.0f}%. HRV and resting heart rate are both "
-                    "sitting favourably against your baseline, which is the pattern "
-                    "that usually precedes a session going well."),
+            headline="Push today",
+            detail=f"Recovery {score:.0f}%. HRV and resting heart rate both sit well.",
+            more=("Both markers above your baseline is the pattern that usually "
+                  "precedes a session going well."),
             evidence=evidence, confidence="moderate")]
 
     if score < 34:
         return [Suggestion(
             id="take_it_easy", severity="notice",
-            headline="Barely recovered — keep today light",
-            detail=(f"Recovery is {score:.0f}%. Your body is still carrying load from "
-                    "something. A light day now generally costs less than pushing "
-                    "through and needing three."
-                    + (f" Your 7-day average strain is {avg_strain}."
-                       if avg_strain else "")),
+            headline="Keep it light",
+            detail=(f"Recovery {score:.0f}%. Still carrying load"
+                    + (f", 7-day strain {avg_strain}." if avg_strain else ".")),
+            more=("A light day now generally costs less than pushing through and "
+                  "needing three."),
             evidence=evidence, confidence="moderate")]
 
     if avg_strain is not None and avg_strain >= 15 and score < 55:
         return [Suggestion(
             id="possible_overreaching", severity="notice",
-            headline="Sustained hard training with recovery not keeping up",
-            detail=(f"Your 7-day average strain is {avg_strain} while recovery sits at "
-                    f"{score:.0f}%. That gap, held for a while, is the usual shape of "
-                    "digging a hole. Consider a lighter block."),
+            headline="Recovery not keeping up",
+            detail=f"7-day strain {avg_strain} against {score:.0f}% recovery.",
+            more=("That gap, held for a while, is the usual shape of digging a hole. "
+                  "Consider a lighter block."),
             evidence=evidence, confidence="low")]
 
     return [Suggestion(
         id="moderate_day", severity="info",
-        headline="Middling recovery — train, but leave something in reserve",
-        detail=f"Recovery is {score:.0f}%. Nothing alarming, nothing to push into either.",
+        headline="Train, but hold something back",
+        detail=f"Recovery {score:.0f}%. Nothing alarming, nothing to push into.",
         evidence=evidence, confidence="low")]
 
 
@@ -205,11 +203,11 @@ def _sleep(today: dict[str, Any], past: Sequence[dict[str, Any]]) -> list[Sugges
         return []
     return [Suggestion(
         id="sleep_debt", severity="notice",
-        headline=f"About {debt / 60:.1f} hours of sleep debt this week",
-        detail=("Measured against your configured need of "
-                f"{need / 60:.0f}h a night. Sleep debt is the single factor most "
-                "reliably associated with lower recovery in most people's data — "
-                "check your own Insights tab to see whether that holds for you."),
+        headline=f"{debt / 60:.1f}h sleep debt",
+        detail=f"Across the last 7 nights, against your {need / 60:.0f}h target.",
+        more=("Sleep debt is the factor most reliably associated with lower recovery "
+              "in most people's data. Your Insights tab shows whether that holds for "
+              "you specifically."),
         evidence={"debt_minutes": round(debt), "last_night_minutes": tonight,
                   "need_minutes": need, "recent_nights": recent[:6]},
         confidence="moderate")]

@@ -12,10 +12,10 @@
   /* OLED dark is the identity: pitch black ground, slate cards, neon accents
      used sparingly for data and actions. Light mode keeps the same roles with
      steps that are legible on white - neon on white is not. */
-  --bg:#000000; --card:#1E1E1E; --raised:#2A2A2A;
+  --bg:#000000; --card:#232325; --raised:#2C2C2E;
   --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.14);
   --axis:rgba(255,255,255,.18);
-  --ink:#FFFFFF; --ink2:#C7C7CC; --muted:#8E8E93;
+  --ink:#FFFFFF; --ink2:#A8A8AD; --muted:#8E8E93;
   --good:#00FF87;   /* neon mint    */
   --warn:#FFD60A;   /* amber        */
   --crit:#FF3B30;   /* alert red    */
@@ -47,7 +47,7 @@ body{margin:0;color:var(--ink);
   font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",
     "Segoe UI",Roboto,system-ui,sans-serif;
   letter-spacing:-.01em;
-  padding:max(10px,env(safe-area-inset-top)) 14px calc(78px + env(safe-area-inset-bottom));
+  padding:max(10px,env(safe-area-inset-top)) 14px calc(96px + env(safe-area-inset-bottom));
   -webkit-font-smoothing:antialiased}
 nav button{transition:color .2s,background .2s}
 nav button .g{transition:transform .25s cubic-bezier(.34,1.56,.64,1);
@@ -125,7 +125,9 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .stagger>*:nth-child(3){animation-delay:.12s} .stagger>*:nth-child(4){animation-delay:.17s}
 .stagger>*:nth-child(5){animation-delay:.22s} .stagger>*:nth-child(6){animation-delay:.27s}
 .stagger>*:nth-child(n+7){animation-delay:.31s}
-.ringarc{transition:stroke-dashoffset .95s cubic-bezier(.22,1,.36,1)}
+.ringarc{transition:stroke-dashoffset .95s cubic-bezier(.22,1,.36,1);
+  /* A tight bloom reads as neon; a wide one just reads as out of focus. */
+  filter:drop-shadow(0 0 2.5px currentColor)}
 .chip-press{transition:transform .12s ease,background .15s ease,border-color .15s ease}
 .chip-press:active{transform:scale(.95)}
 @media (prefers-reduced-motion:reduce){
@@ -148,16 +150,16 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   padding:7px 20px;font-size:12px;font-weight:650;letter-spacing:.09em;
   text-transform:uppercase;min-width:126px;text-align:center}
 .rings{display:grid;grid-template-columns:repeat(3,1fr);align-items:start;
-  padding-top:4px}
+  padding-top:6px}
 .ringcell{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
 .ringcell .rg{position:relative;display:grid;place-items:center;
-  width:96px;height:96px;transform-origin:50% 0;
+  width:104px;height:104px;transform-origin:50% 0;
   transition:transform .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1)}
 /* Scale AND shrink the box, so the collapsed bar really is 38px tall. */
-.ringbar.compact .ringcell .rg{transform:scale(.40);height:38px}
-.ringcell .rgv{position:absolute;font-size:22px;font-weight:600;letter-spacing:-.02em;
+.ringbar.compact .ringcell .rg{transform:scale(.37);height:38px}
+.ringcell .rgv{position:absolute;font-size:31px;font-weight:700;letter-spacing:-.035em;
   transition:opacity .22s}
-.ringcell .rgv small{font-size:12px;color:var(--muted);font-weight:500}
+.ringcell .rgv small{font-size:14px;color:var(--muted);font-weight:600}
 .ringbar.compact .ringcell .rgv{opacity:0}
 .ringcell .cap{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;
   color:var(--muted);font-weight:600;transition:color var(--dur) var(--ease)}
@@ -171,9 +173,22 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   width:1px;background:var(--line)}
 .hm .c svg{opacity:.65;margin-bottom:5px}
 .hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
-.hm .c .v{font-size:15px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+.hm .c .v{font-size:18px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em}
 .hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
 .hm .c .v.none{color:var(--muted);font-weight:400}
+
+/* ---- recent days as rows, not a spreadsheet ---- */
+.dayrow{display:flex;align-items:center;gap:12px;padding:12px 0}
+.dayrow+.dayrow{border-top:1px solid var(--line)}
+.dayrow .dot{width:8px;height:8px;flex:0 0 auto}
+.dr-main{flex:1 1 auto;min-width:0}
+.dr-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.dr-date{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.dr-score{font-size:21px;font-weight:700;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums}
+.dr-score i{font-size:11px;font-style:normal;font-weight:600;opacity:.6;margin-left:1px}
+.dr-meta{font-size:11.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
 
 /* ---- aligned strain / recovery rows ---- */
 .drs{display:flex;flex-direction:column;gap:7px}
@@ -213,9 +228,10 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
 .stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
-.stat .val{font-size:27px;font-weight:600;margin-top:4px;letter-spacing:-.02em}
-.stat .val small{font-size:13px;color:var(--muted);font-weight:400}
-.stat .note{font-size:11px;color:var(--muted);margin-top:3px}
+.stat .val{font-size:38px;font-weight:700;margin-top:6px;letter-spacing:-.035em;
+  line-height:1.05}
+.stat .val small{font-size:15px;color:var(--muted);font-weight:500}
+.stat .note{font-size:11px;color:var(--muted);margin-top:5px}
 .delta{font-size:11.5px;margin-top:4px;display:inline-flex;align-items:center;gap:4px}
 
 /* ---- suggestions ---- */
@@ -324,13 +340,13 @@ tr:last-child td{border-bottom:none}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 
 /* ---- bottom tab bar ---- */
-nav{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;
-  background:color-mix(in srgb,var(--card) 72%,transparent);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
-  backdrop-filter:blur(20px) saturate(180%);
-  border-top:1px solid var(--line);
-  padding:7px 6px calc(7px + env(safe-area-inset-bottom))}
-@supports not (backdrop-filter:blur(1px)){ nav{background:var(--card)} }
+nav{position:fixed;left:14px;right:14px;bottom:calc(12px + env(safe-area-inset-bottom));
+  z-index:10;display:flex;max-width:572px;margin:0 auto;border-radius:999px;
+  background:color-mix(in srgb,var(--raised) 68%,transparent);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--line-strong);padding:8px 6px}
+@supports not (backdrop-filter:blur(1px)){ nav{background:var(--raised)} }
 nav button{flex:1 1 0;background:none;border:none;color:var(--muted);cursor:pointer;
   font:inherit;font-size:9.5px;padding:5px 2px;display:flex;flex-direction:column;
   align-items:center;gap:3px;border-radius:var(--r-sm);letter-spacing:.4px;
@@ -339,11 +355,7 @@ nav button{flex:1 1 0;background:none;border:none;color:var(--muted);cursor:poin
 nav button[aria-selected="true"]{color:var(--strain)}
 nav button:active{transform:scale(.96)}
 @media (min-width:680px){
-  body{padding-bottom:30px}
-  nav{position:static;border:1px solid var(--line);border-radius:999px;
-    max-width:600px;margin:0 auto 16px;padding:5px}
-  nav button{flex-direction:row;font-size:13px;padding:9px;gap:7px}
-  nav button[aria-selected="true"]{background:var(--bg)}
+  nav button{flex-direction:row;font-size:11px;padding:10px;gap:7px}
 }
 </style>
 </head>
@@ -766,6 +778,7 @@ async function renderToday(el, stale){
         <div class="top"><span class="ic">${icon(ICON[x.severity]||"notice",17)}</span><h3>${esc(x.headline)}</h3></div>
         <p>${esc(x.detail)}</p>
         <details class="more"><summary>confidence: ${x.confidence}</summary>
+          ${x.more?`<p>${esc(x.more)}</p>`:""}
           <p>${esc(advice.disclaimer)}</p></details></div>`).join("")
     : "";
 
@@ -835,15 +848,9 @@ async function renderToday(el, stale){
         days without inventing that.</p></details>
     </div>
 
-    <div class="card"><h2>Recent days</h2><div class="scroll"><table>
-      <tr><th>Date</th><th>Recovery</th><th>Strain</th><th>Sleep</th><th>HRV</th><th>RHR</th></tr>
-      ${days.slice(0,14).map(d=>{const b=BANDS[d.recovery.band];
-        return `<tr><td>${d.date.slice(5)}</td>
-        <td>${b?`<span class="dot" style="background:${b.c};margin-right:5px"></span>`:""}${d.recovery.score ?? "–"}</td>
-        <td>${fmt(d.strain.score,1)}</td>
-        <td>${Math.floor((d.sleep.total_minutes||0)/60)}h ${(d.sleep.total_minutes||0)%60}m</td>
-        <td>${fmt(d.hrv.rmssd_ms,1)}</td><td>${fmt(d.heart_rate.resting,1)}</td></tr>`;}).join("")}
-    </table></div></div>
+    <div class="card"><h2>Recent days</h2>
+      ${days.slice(0,14).map(dayRow).join("")}
+    </div>
 
     <details class="more"><summary>How these numbers are made</summary>
       <p>Recovery, strain and sleep are computed on this server from raw sensor data
@@ -855,6 +862,25 @@ async function renderToday(el, stale){
   drawRings(el);
   wireCharts(el);
   say("#stats", statsLine(data.stats));
+}
+
+function dayRow(d){
+  const band = BANDS[d.recovery.band];
+  const colour = band ? band.c : "var(--muted)";
+  const mins = d.sleep.total_minutes || 0;
+  const when = new Date(d.date + "T00:00:00Z")
+    .toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"});
+  return `<div class="dayrow">
+    <span class="dot" style="background:${colour}"></span>
+    <div class="dr-main">
+      <div class="dr-top">
+        <span class="dr-date">${esc(when)}</span>
+        <span class="dr-score" style="color:${colour}">${d.recovery.score ?? "–"}<i>%</i></span>
+      </div>
+      <div class="dr-meta">Strain ${fmt(d.strain.score,1)} · Sleep ${Math.floor(mins/60)}h ${mins%60}m
+        · HRV ${fmt(d.hrv.rmssd_ms,0)} · RHR ${fmt(d.heart_rate.resting,0)}</div>
+    </div>
+  </div>`;
 }
 
 // Two aligned rows rather than a dual-axis chart: same days, own scale each.
