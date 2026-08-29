@@ -121,6 +121,8 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
 .stagger>*{animation:rise .42s cubic-bezier(.22,1,.36,1) backwards}
+.quiet .stagger>*{animation:none}
+.quiet .ringarc{transition:none}
 .stagger>*:nth-child(1){animation-delay:.02s} .stagger>*:nth-child(2){animation-delay:.07s}
 .stagger>*:nth-child(3){animation-delay:.12s} .stagger>*:nth-child(4){animation-delay:.17s}
 .stagger>*:nth-child(5){animation-delay:.22s} .stagger>*:nth-child(6){animation-delay:.27s}
@@ -622,13 +624,18 @@ function ringSVG(value, max, color, size, stroke){
   </svg>`;
 }
 
-function drawRings(root){
+// Values already on screen must not re-animate on a background refresh.
+const lastRing = {};
+
+function drawRings(root, quiet){
   const arcs = root.querySelectorAll(".ringarc[data-to]");
   if(!arcs.length) return;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    arcs.forEach(a => { a.setAttribute("stroke-dashoffset", a.dataset.to);
-                        delete a.dataset.to; });
-  }));
+  const apply = () => arcs.forEach(a => {
+    a.setAttribute("stroke-dashoffset", a.dataset.to);
+    delete a.dataset.to;
+  });
+  if(quiet){ apply(); return; }          // no transition class is set: snaps
+  requestAnimationFrame(() => requestAnimationFrame(apply));
 }
 const BANDS = {green:{c:"var(--good)",t:"Recovered"},yellow:{c:"var(--warn)",t:"Adequate"},
                red:{c:"var(--crit)",t:"Low"}};
@@ -795,7 +802,7 @@ function ringBar(t, band){
   </div>`;
 }
 
-async function renderToday(el, stale){
+async function renderToday(el, stale, quiet){
   const [data, advice] = await Promise.all([
     api("/api/summary?days=14"),
     api(`/api/advice?date=${state.date}`).catch(e=>({ready:false,reason:e.message,suggestions:[]}))
@@ -808,7 +815,7 @@ async function renderToday(el, stale){
     el.innerHTML = (t?ringBar({sleep:{},recovery:{},strain:{}},null):"") +
       `<div class="card"><div class="empty">No data for ${esc(dateLabel().toLowerCase())}.<br><br>
       Once the laptop bridge forwards a sync, everything appears here.</div></div>`;
-    wireRingBar(); drawRings(el);
+    wireRingBar(); drawRings(el, quiet);
     return;
   }
 
@@ -900,7 +907,7 @@ async function renderToday(el, stale){
   </div>`;
 
   wireRingBar();
-  drawRings(el);
+  drawRings(el, quiet);
   wireCharts(el);
   say("#stats", statsLine(data.stats));
 }
@@ -976,7 +983,7 @@ function statsLine(s){
 }
 
 // ---------- Journal ----------
-async function renderJournal(el, stale){
+async function renderJournal(el, stale, quiet){
   const [entry, all, intake] = await Promise.all([
     api(`/api/journal/${state.date}`), api("/api/journal?days=30"),
     api(`/api/intake?date=${state.date}`).catch(()=>({entries:[],presets:{}}))
@@ -1093,7 +1100,7 @@ async function renderJournal(el, stale){
 }
 
 // ---------- Activities ----------
-async function renderActivities(el, stale){
+async function renderActivities(el, stale, quiet){
   const data = await api(`/api/activities?date=${state.date}`);
   if(stale()) return;
   const rows = data.activities;
@@ -1198,7 +1205,7 @@ function notReady(reason){
   return `<div class="muted" style="padding:6px 0">${esc(reason || "Not enough data yet.")}</div>`;
 }
 
-async function renderBody(el, stale){
+async function renderBody(el, stale, quiet){
   const d = await api(`/api/advanced?date=${state.date}&days=60`);
   if(stale()) return;
 
@@ -1326,7 +1333,7 @@ async function renderBody(el, stale){
 }
 
 // ---------- Insights ----------
-async function renderInsights(el, stale){
+async function renderInsights(el, stale, quiet){
   const data = await api("/api/insights?days=90&lag=1");
   if(stale()) return;
   if(!data.ready){
@@ -1399,7 +1406,7 @@ function effBar(f, scale, dim){
 }
 
 // ---------- Learning ----------
-async function renderLearning(el, stale){
+async function renderLearning(el, stale, quiet){
   const d = await api("/api/learning?days=60");
   if(stale()) return;
   const a=d.activity_recognition, i=d.lifestyle_insights;
@@ -1456,19 +1463,25 @@ const TABS={today:renderToday, journal:renderJournal, activities:renderActivitie
             body:renderBody, insights:renderInsights, learning:renderLearning};
 // A slow render must never overwrite a tab the user has since switched to.
 let renderToken = 0;
-async function render(){
+async function render(opts){
+  const quiet = !!(opts && opts.quiet);
   const my = ++renderToken, tab = state.tab, el = $("#content");
   const stale = () => my !== renderToken;
-  el.innerHTML = SKELETONS[tab === "today" ? "today" : "list"];
+  // A background refresh keeps the current content on screen and skips the
+  // entrance animations; only a real navigation shows the skeleton.
+  document.body.classList.toggle("quiet", quiet);
+  if(!quiet) el.innerHTML = SKELETONS[tab === "today" ? "today" : "list"];
   try{
-    await TABS[tab](el, stale);
+    await TABS[tab](el, stale, quiet);
     if(stale()) return;
     syncDevPanel();
     say("#updated","updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
   }catch(e){
     if(stale()) return;
-    el.innerHTML = `<div class="card"><div class="empty">Could not load: ${esc(e.message)}</div></div>`;
-    say("#updated","error");
+    // A failed background refresh must not blank content that is still valid.
+    if(!quiet)
+      el.innerHTML = `<div class="card"><div class="empty">Could not load: ${esc(e.message)}</div></div>`;
+    say("#updated", quiet ? "refresh failed" : "error");
   }
 }
 $("#nav").onclick = e => {
@@ -1479,7 +1492,15 @@ $("#nav").onclick = e => {
   render();
 };
 render();
-setInterval(()=>{ if(state.tab==="today") render(); }, 60000);
+// Live data: refresh quietly and often enough to feel live, without the page
+// visibly rebuilding itself under the reader.
+setInterval(() => {
+  if(document.hidden) return;               // no work while the tab is hidden
+  if(state.tab === "today" || state.tab === "body") render({quiet:true});
+}, 20000);
+document.addEventListener("visibilitychange", () => {
+  if(!document.hidden) render({quiet:true});
+});
 </script>
 </body>
 </html>

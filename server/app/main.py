@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import hmac
 import os
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -109,7 +111,7 @@ def require_token(authorization: str = Header(default="")) -> None:
 def ingest(batch: Batch, _: None = Depends(require_token)) -> dict[str, Any]:
     received, inserted = db.insert_records(batch.records)
     if inserted:
-        _invalidate_cache()
+        _invalidate(_touched_dates(batch.records))
     return {"ok": True, "received": received, "inserted": inserted,
             "duplicates": received - inserted}
 
@@ -138,34 +140,90 @@ def _day_bounds(day: datetime) -> tuple[int, int]:
     return start_unix, start_unix + 86400
 
 
-# Day summaries are pure functions of the stored records, so they are cached
-# and the cache is dropped whenever new records land. Without this, computing a
-# day meant recomputing its 30-day baseline from scratch, so a 90-day request
-# performed ~2800 full day-summaries and timed out in the browser.
+# Day summaries are pure functions of the stored records, so they are cached.
+#
+# Invalidation is scoped to the dates the incoming records actually touch. It
+# used to clear everything on any ingest, which is fine for a nightly backfill
+# and catastrophic for a live strap: with records arriving several times a
+# second the cache never survived, every read recomputed fourteen days and
+# their thirty-day baselines, and /api/summary went from 10 ms to 27 s.
+#
+# A short coalescing window on top means a date is recomputed at most once
+# every few seconds however fast records arrive. Three seconds of staleness is
+# invisible on a dashboard; the recompute storm was not.
 _CACHE_LIMIT = 2048
-_raw_cache: dict[str, dict[str, Any]] = {}
-_final_cache: dict[str, dict[str, Any]] = {}
+MIN_RECOMPUTE_SECONDS = 3.0
+
+_cache_lock = threading.Lock()
+_raw_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_final_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_dirty: set[str] = set()
+
+
+def _touched_dates(records: list[dict[str, Any]]) -> set[str]:
+    """Local dates the records fall on, using the configured day boundary."""
+    out: set[str] = set()
+    for r in records:
+        unix = r.get("unix")
+        if isinstance(unix, (int, float)):
+            out.add(datetime.fromtimestamp(unix + TZ_OFFSET_H * 3600, timezone.utc)
+                    .strftime("%Y-%m-%d"))
+    return out
+
+
+def _invalidate(dates: set[str]) -> None:
+    """Mark dates stale. A day's final summary also depends on later days'
+    baselines, so anything cached from that date onward is dropped too."""
+    if not dates:
+        return
+    with _cache_lock:
+        _dirty.update(dates)
+        earliest = min(dates)
+        for key in [k for k in _final_cache if k >= earliest]:
+            _dirty.add(key)
 
 
 def _invalidate_cache() -> None:
-    _raw_cache.clear()
-    _final_cache.clear()
+    with _cache_lock:
+        _raw_cache.clear()
+        _final_cache.clear()
+        _dirty.clear()
 
 
-def _trim_cache(cache: dict[str, Any]) -> None:
+def _trim(cache: dict[str, Any]) -> None:
     while len(cache) > _CACHE_LIMIT:
         cache.pop(next(iter(cache)))
+
+
+def _get_cached(cache: dict[str, tuple[float, dict[str, Any]]],
+                key: str) -> dict[str, Any] | None:
+    """Cached value, unless it is stale and old enough to be worth redoing."""
+    with _cache_lock:
+        entry = cache.get(key)
+        if entry is None:
+            return None
+        computed_at, value = entry
+        if key in _dirty and (time.monotonic() - computed_at) >= MIN_RECOMPUTE_SECONDS:
+            return None
+        return value
+
+
+def _put_cached(cache: dict[str, tuple[float, dict[str, Any]]],
+                key: str, value: dict[str, Any]) -> None:
+    with _cache_lock:
+        cache[key] = (time.monotonic(), value)
+        _dirty.discard(key)
+        _trim(cache)
 
 
 def _raw_summary(day: datetime) -> dict[str, Any]:
     """Day summary without baselines. Used to build the baseline series."""
     key = day.strftime("%Y-%m-%d")
-    cached = _raw_cache.get(key)
+    cached = _get_cached(_raw_cache, key)
     if cached is None:
         lo, hi = _day_bounds(day)
         cached = summarise_day(db.range(lo, hi), max_hr=MAX_HR, sleep_need_h=SLEEP_NEED_H)
-        _raw_cache[key] = cached
-        _trim_cache(_raw_cache)
+        _put_cached(_raw_cache, key, cached)
     return cached
 
 
@@ -207,7 +265,7 @@ def _sensor_baselines(before: datetime, days: int) -> dict[str, float | None]:
 
 def _summarise(day: datetime) -> dict[str, Any]:
     key = day.strftime("%Y-%m-%d")
-    cached = _final_cache.get(key)
+    cached = _get_cached(_final_cache, key)
     if cached is not None:
         return cached
     lo, hi = _day_bounds(day)
@@ -218,8 +276,7 @@ def _summarise(day: datetime) -> dict[str, Any]:
     s["baselines"] = {"hrv_rmssd_ms": hrv_base, "resting_hr": rhr_base,
                       "window_days": BASELINE_DAYS,
                       "sensors": _sensor_baselines(day, BASELINE_DAYS)}
-    _final_cache[key] = s
-    _trim_cache(_final_cache)
+    _put_cached(_final_cache, key, s)
     return s
 
 

@@ -31,6 +31,10 @@ MALIK_THRESHOLD = 0.20      # reject beats differing >20% from the previous one
 EPOCH_SECONDS = 60
 SLEEP_MIN_BLOCK_MIN = 20    # ignore blocks shorter than this
 SLEEP_MERGE_GAP_MIN = 15    # brief wakes inside a sleep block
+# A day still filling up should not present a confident recovery score. Without
+# a night's sleep to score against, and with only minutes of daytime data, the
+# number is dominated by noise and reads as alarming rather than incomplete.
+MIN_EPOCHS_FOR_RECOVERY = 120
 DEFAULT_SLEEP_NEED_H = 8.0
 
 
@@ -48,12 +52,19 @@ def malik_filter(rr: Sequence[float]) -> list[float]:
 
 
 def rmssd(rr: Sequence[float]) -> float | None:
-    """Root mean square of successive differences, in ms."""
+    """Root mean square of successive differences, in ms.
+
+    Exactly zero is not a measurement. A living heart does not produce
+    identical consecutive intervals, so a flat series means a stuck or
+    synthesised source, and reporting "0.0 ms" would read as catastrophic
+    autonomic failure rather than as a sensor problem.
+    """
     clean = malik_filter(rr)
     if len(clean) < 3:
         return None
     diffs = [b - a for a, b in zip(clean, clean[1:])]
-    return round(math.sqrt(sum(d * d for d in diffs) / len(diffs)), 1)
+    value = math.sqrt(sum(d * d for d in diffs) / len(diffs))
+    return round(value, 1) if value > 0 else None
 
 
 def sdnn(rr: Sequence[float]) -> float | None:
@@ -316,8 +327,12 @@ def summarise_day(records: list[dict[str, Any]], *, max_hr: float = 190.0,
             "performance_pct": sleep_perf, "need_hours": sleep_need_h,
         },
         "strain": {"score": strain_score(tr), "trimp": round(tr, 1), "scale_max": 21},
-        "recovery": recovery_score(rmssd(hrv_rr), hrv_baseline, resting,
-                                   rhr_baseline, sleep_perf),
+        "recovery": (recovery_score(rmssd(hrv_rr), hrv_baseline, resting,
+                                    rhr_baseline, sleep_perf)
+                     if (sleep_blocks or len(epochs) >= MIN_EPOCHS_FOR_RECOVERY)
+                     else {"score": None, "components": {},
+                           "note": "day still filling up"}),
+        "partial": not sleep_blocks and len(epochs) < MIN_EPOCHS_FOR_RECOVERY,
         "sensors": {
             "skin_temp_raw": _sensor("skin_temp_raw"),
             "resp_rate_raw": _sensor("resp_rate_raw"),
