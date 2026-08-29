@@ -25,6 +25,8 @@ class Config:
     forward_url: str = ""
     forward_token: str = ""
     hmac_secret: str = ""
+    cf_access_client_id: str = ""
+    cf_access_client_secret: str = ""
     batch_size: int = 50
     forward_interval: float = 5.0
     verify_tls: bool = True
@@ -58,6 +60,8 @@ class Config:
             "WHOOP_FORWARD_URL": "forward_url",
             "WHOOP_FORWARD_TOKEN": "forward_token",
             "WHOOP_HMAC_SECRET": "hmac_secret",
+            "CF_ACCESS_CLIENT_ID": "cf_access_client_id",
+            "CF_ACCESS_CLIENT_SECRET": "cf_access_client_secret",
             "WHOOP_SPOOL_PATH": "spool_path",
             "WHOOP_LOG_LEVEL": "log_level",
             "WHOOP_LOG_FILE": "log_file",

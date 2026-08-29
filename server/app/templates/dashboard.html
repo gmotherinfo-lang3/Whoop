@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>Strap</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --line:#e3e6ea; --ink:#12161c; --muted:#6b7480;
+  --green:#12a150; --yellow:#c98a00; --red:#d3413c; --accent:#3b6fd4;
+  --radius:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0d1117; --panel:#161b22; --line:#262d36; --ink:#e6edf3;
+         --muted:#8b949e; --green:#2ea861; --yellow:#d29922; --red:#e5534b;
+         --accent:#5b8bf0; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  padding:max(12px,env(safe-area-inset-top)) 12px 40px;}
+.wrap{max-width:720px;margin:0 auto}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:8px 0 18px}
+h1{font-size:19px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+.metric .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.metric .value{font-size:26px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+.metric .unit{font-size:13px;color:var(--muted);font-weight:400}
+.metric .note{color:var(--muted);font-size:11px;margin-top:4px}
+.ring{display:flex;align-items:center;gap:18px}
+.ring svg{flex:0 0 auto}
+.ring .big{font-size:38px;font-weight:650;line-height:1;font-variant-numeric:tabular-nums}
+.green{color:var(--green)} .yellow{color:var(--yellow)} .red{color:var(--red)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:8px}
+.bar>i{display:block;height:100%;background:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:right;padding:7px 4px;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.warn{background:color-mix(in srgb,var(--yellow) 10%,transparent);
+  border:1px solid color-mix(in srgb,var(--yellow) 35%,transparent);
+  color:var(--ink);font-size:12.5px;padding:12px 14px;border-radius:var(--radius);margin-bottom:12px}
+.warn b{color:var(--yellow)}
+.empty{color:var(--muted);text-align:center;padding:28px 12px;font-size:14px}
+.foot{color:var(--muted);font-size:11px;margin-top:20px;line-height:1.6}
+.spark{width:100%;height:40px;display:block;margin-top:10px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+  margin:0 0 12px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Strap</h1>
+    <div class="sub" id="updated">loading…</div>
+  </header>
+
+  <div class="warn">
+    <b>Approximations.</b> Recovery, strain and sleep are computed on this
+    server from raw sensor data using published methods. They are not WHOOP's
+    values and will not match the official app. SpO₂, skin temperature and
+    respiratory rate are raw sensor counts, not real-world units. Not medical
+    measurements.
+  </div>
+
+  <div id="content"><div class="empty">Loading…</div></div>
+
+  <div class="foot">
+    <span id="stats"></span>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = (v, d=0) => v === null || v === undefined ? "–" : Number(v).toFixed(d);
+
+function ring(score, band){
+  const r = 34, C = 2 * Math.PI * r;
+  const pct = score === null ? 0 : Math.max(0, Math.min(100, score)) / 100;
+  const color = band === "green" ? "var(--green)" : band === "yellow" ? "var(--yellow)"
+              : band === "red" ? "var(--red)" : "var(--muted)";
+  return `<svg width="88" height="88" viewBox="0 0 88 88" aria-hidden="true">
+    <circle cx="44" cy="44" r="${r}" fill="none" stroke="var(--line)" stroke-width="8"/>
+    <circle cx="44" cy="44" r="${r}" fill="none" stroke="${color}" stroke-width="8"
+      stroke-linecap="round" stroke-dasharray="${C}"
+      stroke-dashoffset="${C * (1 - pct)}" transform="rotate(-90 44 44)"/>
+  </svg>`;
+}
+
+function sparkline(values){
+  const pts = values.filter(v => v !== null && v !== undefined);
+  if (pts.length < 2) return "";
+  const w = 320, h = 40, lo = Math.min(...pts), hi = Math.max(...pts);
+  const span = hi - lo || 1;
+  // Oldest on the left.
+  const d = pts.slice().reverse().map((v, i) =>
+    `${i === 0 ? "M" : "L"} ${(i / (pts.length - 1) * w).toFixed(1)} ${(h - (v - lo) / span * (h - 6) - 3).toFixed(1)}`
+  ).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2"
+      stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+function metric(label, value, unit, note){
+  return `<div class="metric"><div class="label">${label}</div>
+    <div class="value">${value}${unit ? ` <span class="unit">${unit}</span>` : ""}</div>
+    ${note ? `<div class="note">${note}</div>` : ""}</div>`;
+}
+
+function render(data){
+  const days = data.days.filter(d => d.has_data);
+  if (!days.length){
+    $("#content").innerHTML = `<div class="card"><div class="empty">
+      No data yet.<br><br>Once the laptop bridge connects to your strap and
+      forwards a sync, metrics will appear here.</div></div>`;
+    $("#updated").textContent = "no data";
+    return;
+  }
+
+  const t = days[0];
+  const rec = t.recovery || {};
+  const sleepH = Math.floor((t.sleep.total_minutes || 0) / 60);
+  const sleepM = (t.sleep.total_minutes || 0) % 60;
+  const hrvTrend = data.days.map(d => d.has_data ? d.hrv.rmssd_ms : null);
+
+  let html = `
+  <div class="card">
+    <h2>Recovery — ${t.date}</h2>
+    <div class="ring">
+      ${ring(rec.score ?? null, rec.band)}
+      <div>
+        <div class="big ${rec.band || ""}">${rec.score ?? "–"}${rec.score != null ? "<span class='unit'>%</span>" : ""}</div>
+        <div class="sub" style="margin-top:6px">
+          ${rec.score == null ? (rec.note || "not enough data")
+            : `HRV ${fmt(rec.components.hrv)} · RHR ${fmt(rec.components.resting_hr)} · Sleep ${fmt(rec.components.sleep)}`}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    ${metric("Strain", fmt(t.strain.score, 1), "/ 21", `TRIMP ${fmt(t.strain.trimp,1)}`)}
+    ${metric("Sleep", `${sleepH}h ${sleepM}m`, "", t.sleep.performance_pct != null ? `${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h goal` : "no sleep detected")}
+    ${metric("HRV (RMSSD)", fmt(t.hrv.rmssd_ms, 1), "ms", `from ${t.hrv.source.replace("_"," ")} · ${t.hrv.beats_used} beats`)}
+    ${metric("Resting HR", fmt(t.heart_rate.resting, 1), "bpm", `avg ${fmt(t.heart_rate.avg,1)} · max ${fmt(t.heart_rate.max)}`)}
+  </div>
+
+  <div class="card">
+    <h2>HRV trend — last ${data.days.length} days</h2>
+    ${sparkline(hrvTrend) || `<div class="empty">Not enough days yet.</div>`}
+    <div class="sub" style="margin-top:6px">
+      Baseline ${fmt(t.baselines.hrv_rmssd_ms, 1)} ms · resting HR ${fmt(t.baselines.resting_hr, 1)} bpm
+      (${t.baselines.window_days}-day median)
+    </div>
+  </div>`;
+
+  if (t.sleep.blocks.length){
+    html += `<div class="card"><h2>Sleep blocks</h2><div class="scroll"><table>
+      <tr><th>Start</th><th>Duration</th><th>Efficiency</th><th>Avg HR</th></tr>
+      ${t.sleep.blocks.map(b => `<tr>
+        <td>${new Date(b.start).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</td>
+        <td>${Math.floor(b.minutes/60)}h ${b.minutes%60}m</td>
+        <td>${fmt(b.efficiency,1)}%</td>
+        <td>${fmt(b.avg_hr,1)}</td></tr>`).join("")}
+    </table></div></div>`;
+  }
+
+  html += `<div class="card"><h2>History</h2><div class="scroll"><table>
+    <tr><th>Date</th><th>Recovery</th><th>Strain</th><th>Sleep</th><th>HRV</th><th>RHR</th><th>Worn</th></tr>
+    ${days.map(d => `<tr>
+      <td>${d.date}</td>
+      <td class="${d.recovery.band||""}">${d.recovery.score ?? "–"}</td>
+      <td>${fmt(d.strain.score,1)}</td>
+      <td>${Math.floor((d.sleep.total_minutes||0)/60)}h ${(d.sleep.total_minutes||0)%60}m</td>
+      <td>${fmt(d.hrv.rmssd_ms,1)}</td>
+      <td>${fmt(d.heart_rate.resting,1)}</td>
+      <td>${fmt(d.wear.on_wrist_pct)}%</td></tr>`).join("")}
+  </table></div></div>`;
+
+  $("#content").innerHTML = html;
+  $("#updated").textContent = "updated " + new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+
+  const s = data.stats;
+  $("#stats").textContent =
+    `${s.records.toLocaleString()} records · ${s.events.toLocaleString()} events` +
+    (s.last_ingest ? ` · last sync ${s.last_ingest.at} UTC (+${s.last_ingest.inserted} new)` : " · no sync yet");
+}
+
+async function load(){
+  try{
+    const r = await fetch("/api/summary?days=14");
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    render(await r.json());
+  }catch(e){
+    $("#content").innerHTML = `<div class="card"><div class="empty">
+      Could not load data: ${e.message}</div></div>`;
+    $("#updated").textContent = "error";
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

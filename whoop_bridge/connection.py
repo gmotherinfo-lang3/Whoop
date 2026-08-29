@@ -71,6 +71,10 @@ class WhoopBridge:
         self._tasks: set[asyncio.Task] = set()
         self.stats = {"frames": 0, "records": 0, "crc_errors": 0, "chunks_acked": 0}
 
+    @property
+    def is_connected(self) -> bool:
+        return self._client is not None and self._client.is_connected
+
     # --- command plumbing ---------------------------------------------------
     def _next_seq(self) -> int:
         self._seq = (self._seq + 1) & 0xFF

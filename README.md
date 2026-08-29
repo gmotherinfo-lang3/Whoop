@@ -1,13 +1,23 @@
 # whoop-bridge
 
-Use a WHOOP 4.0 strap without the subscription: pair it to a **Windows laptop**
-over Bluetooth LE, pull the data off it, and forward that data to your own
-endpoint.
+Use a WHOOP 4.0 strap without the subscription. A **Windows laptop** collects
+from the strap over Bluetooth LE and forwards to **your own server**, which
+stores the data, computes the metrics, and serves one dashboard you can open
+from the laptop or from your phone through a Cloudflare tunnel.
 
-Because the laptop is around most of the time, it acts as a standing bridge —
-it reconnects on its own, pulls whatever the strap recorded while you were
-away, and keeps a durable local queue so nothing is lost when the network or
-the endpoint is down.
+```
+WHOOP 4.0  --BLE-->  Windows laptop        server (Docker)          your phone
+                     tray app + bridge  ->  FastAPI + SQLite  <--   browser
+                     (collector only)       + dashboard              via tunnel
+```
+
+The laptop is a collector, not a second UI — one dashboard, viewed from
+everywhere. Because the laptop is around most of the time it acts as a standing
+bridge: it reconnects on its own, pulls whatever the strap recorded while you
+were away, and keeps a durable local queue so nothing is lost when the network
+or the server is down.
+
+Setup is in **[DEPLOY.md](DEPLOY.md)**.
 
 > Independent, unofficial, not affiliated with WHOOP, Inc.
 > See [`ATTRIBUTION.md`](ATTRIBUTION.md) for credits, licensing, and disclaimers.
@@ -42,7 +52,25 @@ counts. The strap does not send real-world units, so this bridge forwards the
 raw counts rather than inventing a calibration. If you want those in real
 units you'd have to derive your own calibration.
 
+## Metrics the server computes
+
+Recovery (0–100), Strain (0–21), sleep blocks and performance, HRV (RMSSD with
+Malik artifact filtering), resting heart rate, and wear time — all computed
+locally from raw sensor data, with a rolling personal baseline.
+
+**These are approximations, not WHOOP's numbers.** WHOOP computes recovery,
+strain and sleep in its own cloud with undisclosed models; nothing here
+reproduces them. These use published sports-science methods (Banister TRIMP for
+strain, actigraphy-style sleep detection) and are internally consistent and
+useful for tracking trends, but they will not match the official app. Not
+medical measurements.
+
+("Body battery" is a Garmin metric, not a WHOOP one — Recovery is the closest
+equivalent here.)
+
 ## Setup
+
+The laptop half. For the server and tunnel, see **[DEPLOY.md](DEPLOY.md)**.
 
 Requires Windows 10 (build 16299+) or 11, Bluetooth LE, and Python 3.11+.
 
@@ -67,7 +95,14 @@ Then:
 .\.venv\Scripts\whoop-bridge.exe run
 ```
 
-To keep it running in the background, restarting on wake and at logon:
+For a system-tray app with pairing, status and a link to the dashboard:
+
+```powershell
+.\.venv\Scripts\pip.exe install -e ".[tray]"
+.\.venv\Scripts\pythonw.exe -m tray.whoop_tray
+```
+
+Or headless, restarting on wake and at logon:
 
 ```powershell
 .\windows\install-task.ps1
@@ -143,6 +178,16 @@ safer for the band's copy but stops the offload advancing past the first chunk.
 
 `whoop-bridge status` shows the queue depth at any time.
 
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `whoop_bridge/` | BLE collector: protocol, decode, spool, forwarder, CLI |
+| `server/` | FastAPI app: ingest, analytics, dashboard, Dockerfile |
+| `tray/` | Windows system-tray front end |
+| `windows/` | Setup and Scheduled Task installers |
+| `docker-compose.yml` | Server + cloudflared tunnel |
+
 ## Development
 
 ```bash
@@ -150,4 +195,5 @@ pip install -e . && pip install pytest
 python -m pytest tests/ -q
 ```
 
-Protocol details are documented in [`PROTOCOL.md`](PROTOCOL.md).
+Protocol details are in [`PROTOCOL.md`](PROTOCOL.md); deployment in
+[`DEPLOY.md`](DEPLOY.md).

@@ -9,6 +9,7 @@ already-forwarded data can be re-decoded rather than re-collected.
 
 from __future__ import annotations
 
+import hashlib
 import struct
 from datetime import datetime, timezone
 from typing import Any
@@ -105,6 +106,11 @@ def decode(frame: Frame, source: str, *, include_imu: bool = False) -> dict[str,
         rec["raw_hex"] = raw.hex()
     else:
         rec["raw_len"] = len(raw)
+
+    # Content-addressed id, assigned here rather than at send time. This makes
+    # it stable across forwarder retries AND across re-offloads of the same
+    # record by the strap, so the receiver can de-duplicate on it.
+    rec["record_id"] = hashlib.sha256(raw).hexdigest()[:32]
     return rec
 
 

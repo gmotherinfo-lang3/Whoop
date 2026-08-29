@@ -30,7 +30,9 @@ class Forwarder:
     def __init__(self, spool, *, url: str, token: str | None = None,
                  hmac_secret: str | None = None, batch_size: int = 50,
                  interval: float = 5.0, timeout: float = 15.0,
-                 max_backoff: float = 300.0, verify_tls: bool = True):
+                 max_backoff: float = 300.0, verify_tls: bool = True,
+                 cf_access_client_id: str | None = None,
+                 cf_access_client_secret: str | None = None):
         if not url:
             raise ValueError("no forward URL configured")
         if not url.lower().startswith("https://"):
@@ -45,6 +47,11 @@ class Forwarder:
         self.timeout = timeout
         self.max_backoff = max_backoff
         self.verify_tls = verify_tls
+        # Cloudflare Access service token. Needed when the endpoint sits behind
+        # Access: the bridge is not a browser and cannot complete an interactive
+        # Access login, so it authenticates with these headers instead.
+        self.cf_id = cf_access_client_id
+        self.cf_secret = cf_access_client_secret
         self._stop = asyncio.Event()
 
     def _headers(self, body: bytes) -> dict[str, str]:
@@ -57,6 +64,9 @@ class Forwarder:
             h["Authorization"] = f"Bearer {self.token}"
         if self.hmac_secret:
             h["X-Signature-SHA256"] = hmac.new(self.hmac_secret, body, hashlib.sha256).hexdigest()
+        if self.cf_id and self.cf_secret:
+            h["CF-Access-Client-Id"] = self.cf_id
+            h["CF-Access-Client-Secret"] = self.cf_secret
         return h
 
     async def run(self) -> None:
@@ -72,6 +82,8 @@ class Forwarder:
                 ids = [i for i, _ in batch]
                 records = [r for _, r in batch]
                 for r in records:
+                    # Normally set at decode time (content hash, stable across
+                    # retries). This only backfills unparsed frames.
                     r.setdefault("record_id", str(uuid.uuid4()))
                 body = json.dumps({"records": records}, separators=(",", ":")).encode()
 
@@ -98,8 +110,12 @@ class Forwarder:
                 else:
                     # 4xx that will never succeed on retry (bad auth, bad schema).
                     # Keep the rows and stop hammering; the operator must fix config.
-                    log.error("endpoint returned %d (not retryable): %s",
-                              resp.status_code, resp.text[:200])
+                    hint = ""
+                    if resp.status_code in (302, 403) and not self.cf_id:
+                        hint = (" -- looks like a Cloudflare Access challenge; "
+                                "set cf_access_client_id/secret, see DEPLOY.md")
+                    log.error("endpoint returned %d (not retryable)%s: %s",
+                              resp.status_code, hint, resp.text[:200])
                     self.spool.bump_attempts(ids)
                     await self._sleep(self.max_backoff)
 

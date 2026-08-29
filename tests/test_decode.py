@@ -75,3 +75,16 @@ def test_event_and_metadata():
     assert ev["packet"] == "EVENT" and ev["event"] == 10      # WRIST_OFF
     md = decode(parse_frame(make_frame(49, 1, [(6, "B", 2)])), "cmd")
     assert md["packet"] == "METADATA" and md["meta_type"] == 2  # HISTORY_END
+
+
+def test_record_id_is_stable_content_hash():
+    # Must be identical for identical bytes -- forwarder retries and strap
+    # re-offloads both depend on this for de-duplication.
+    frame = make_frame(47, 24, [(11, "<I", 1735689600), (21, "B", 62)])
+    a = decode(parse_frame(frame), "data")
+    b = decode(parse_frame(frame), "data")
+    assert a["record_id"] == b["record_id"]
+    assert len(a["record_id"]) == 32
+
+    other = make_frame(47, 24, [(11, "<I", 1735689601), (21, "B", 62)])
+    assert decode(parse_frame(other), "data")["record_id"] != a["record_id"]

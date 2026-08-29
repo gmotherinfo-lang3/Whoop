@@ -1,0 +1,32 @@
+services:
+  whoop:
+    build: ./server
+    restart: unless-stopped
+    environment:
+      # Shared secret the laptop bridge posts with. Set in .env.
+      INGEST_TOKEN: ${INGEST_TOKEN:?set INGEST_TOKEN in .env}
+      # Your max heart rate. Default 190 = the 220-age rule at age 30.
+      # Strain is computed against this, so a wrong value skews it.
+      MAX_HR: ${MAX_HR:-190}
+      SLEEP_NEED_HOURS: ${SLEEP_NEED_HOURS:-8}
+      BASELINE_DAYS: ${BASELINE_DAYS:-30}
+      # Hours offset from UTC for day boundaries, e.g. -5 for US Eastern.
+      TZ_OFFSET_HOURS: ${TZ_OFFSET_HOURS:-0}
+    volumes:
+      - whoop-data:/data
+    # Published on localhost only. Everything from outside arrives through the
+    # tunnel below, so the app is never directly exposed to the network.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    depends_on:
+      - whoop
+
+volumes:
+  whoop-data:

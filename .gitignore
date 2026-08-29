@@ -11,3 +11,6 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+
+.env
+server/data/

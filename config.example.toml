@@ -32,6 +32,13 @@ forward_url = ""
 forward_token = ""
 # Optional: adds X-Signature-SHA256 so your endpoint can verify the sender.
 hmac_secret = ""
+
+# If your server sits behind Cloudflare Access, the bridge cannot complete an
+# interactive Access login (it is not a browser). Create a service token in the
+# Cloudflare dashboard and put it here, or use the env vars
+# CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET. See DEPLOY.md.
+cf_access_client_id = ""
+cf_access_client_secret = ""
 batch_size = 50
 forward_interval = 5.0
 verify_tls = true

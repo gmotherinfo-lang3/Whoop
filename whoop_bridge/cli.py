@@ -76,6 +76,8 @@ def run_cmd(config_path: str, dry_run: bool) -> None:
         spool, url=cfg.forward_url, token=cfg.forward_token or None,
         hmac_secret=cfg.hmac_secret or None, batch_size=cfg.batch_size,
         interval=cfg.forward_interval, verify_tls=cfg.verify_tls,
+        cf_access_client_id=cfg.cf_access_client_id or None,
+        cf_access_client_secret=cfg.cf_access_client_secret or None,
     )
 
     async def go() -> None:
