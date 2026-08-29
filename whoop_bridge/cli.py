@@ -13,6 +13,7 @@ import click
 from .config import Config
 from .connection import WhoopBridge, scan
 from .forwarder import Forwarder
+from .heartbeat import Heartbeat
 from .spool import Spool
 
 
@@ -72,6 +73,12 @@ def run_cmd(config_path: str, dry_run: bool) -> None:
         include_imu=cfg.include_imu, live_hr=cfg.live_hr, backfill=cfg.backfill,
         ack_and_trim=cfg.ack_and_trim, backfill_interval=cfg.backfill_interval,
     )
+    heartbeat = None if dry_run else Heartbeat(
+        bridge, spool, url=cfg.forward_url, token=cfg.forward_token or None,
+        interval=cfg.heartbeat_interval, verify_tls=cfg.verify_tls,
+        cf_access_client_id=cfg.cf_access_client_id or None,
+        cf_access_client_secret=cfg.cf_access_client_secret or None,
+    )
     forwarder = None if dry_run else Forwarder(
         spool, url=cfg.forward_url, token=cfg.forward_token or None,
         hmac_secret=cfg.hmac_secret or None, batch_size=cfg.batch_size,
@@ -87,6 +94,8 @@ def run_cmd(config_path: str, dry_run: bool) -> None:
             bridge.stop()
             if forwarder:
                 forwarder.stop()
+            if heartbeat:
+                heartbeat.stop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
                 loop.add_signal_handler(sig, shutdown)
@@ -97,6 +106,8 @@ def run_cmd(config_path: str, dry_run: bool) -> None:
         tasks = [asyncio.create_task(bridge.run())]
         if forwarder:
             tasks.append(asyncio.create_task(forwarder.run()))
+        if heartbeat:
+            tasks.append(asyncio.create_task(heartbeat.run()))
         await asyncio.gather(*tasks)
 
     try:

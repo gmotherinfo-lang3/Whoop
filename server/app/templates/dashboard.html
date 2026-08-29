@@ -49,6 +49,34 @@ button.icon{background:transparent;border:1px solid var(--line);color:var(--ink2
 h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
   margin:0 0 14px;font-weight:600}
 
+/* ---- device chip ---- */
+.dev{display:flex;align-items:center;gap:7px;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:5px 9px 5px 11px;
+  cursor:pointer;font-size:12px;color:var(--ink2);transition:border-color .25s}
+.dev .pct{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+.dev .pct.dim{color:var(--muted);font-weight:400}
+.dev .strap{position:relative;display:grid;place-items:center;width:19px;height:23px}
+.dev .strap svg{opacity:.75}
+.dev .led{position:absolute;top:-1px;right:-2px;width:8px;height:8px;border-radius:50%;
+  background:var(--muted);box-shadow:0 0 0 2px var(--card);transition:background .3s,box-shadow .3s}
+.dev.good .led{background:var(--good);
+  box-shadow:0 0 0 2px var(--card),0 0 7px 1px color-mix(in srgb,var(--good) 75%,transparent);
+  animation:pulse 2.4s ease-in-out infinite}
+.dev.warn .led{background:var(--warn);
+  box-shadow:0 0 0 2px var(--card),0 0 6px 1px color-mix(in srgb,var(--warn) 65%,transparent)}
+.dev.bad .led{background:var(--crit);
+  box-shadow:0 0 0 2px var(--card),0 0 6px 1px color-mix(in srgb,var(--crit) 65%,transparent)}
+.dev.good{border-color:color-mix(in srgb,var(--good) 40%,var(--line))}
+.dev.bad{border-color:color-mix(in srgb,var(--crit) 40%,var(--line))}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.devpanel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:15px 17px;margin-bottom:12px;animation:rise .3s cubic-bezier(.22,1,.36,1)}
+.devpanel .t{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14.5px}
+.devpanel p{margin:7px 0 0;color:var(--ink2);font-size:12.5px;line-height:1.55}
+.devpanel .kv{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px;font-size:11.5px;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.devpanel .kv b{color:var(--ink2);font-weight:600}
+
 /* ---- motion ----
    Everything here is decoration on top of a layout that already works, so it
    all switches off for anyone who asks for reduced motion. */
@@ -272,7 +300,17 @@ nav button[aria-selected="true"]{color:var(--ink)}
   <header>
     <h1>Strap</h1>
     <div class="hdr-r">
-      <span class="sub" id="updated">loading…</span>
+      <button class="dev" id="dev" aria-label="Device status" aria-expanded="false">
+        <span class="pct dim" id="devpct">--%</span>
+        <span class="strap">
+          <svg width="15" height="21" viewBox="0 0 15 21" fill="none" stroke="currentColor"
+               stroke-width="1.3" aria-hidden="true">
+            <rect x="1.6" y="1.4" width="11.8" height="18.2" rx="4.4"/>
+            <path d="M4.4 6.2h6.2M4.4 14.6h6.2" opacity=".5"/>
+          </svg>
+          <span class="led" id="devled"></span>
+        </span>
+      </button>
       <button class="icon" id="theme" title="Switch theme" aria-label="Switch theme">◐</button>
     </div>
   </header>
@@ -314,6 +352,70 @@ async function api(path,opts){
   return r.json();
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+// ---------- device status ----------
+// Polled on its own timer so the connection dot stays live no matter which tab
+// is open, and independent of whether records are flowing.
+let deviceState = null;
+
+async function pollDevice(){
+  try{ deviceState = await api("/api/device"); }
+  catch(_){ return; }
+  const chip = $("#dev"), pct = $("#devpct"), led = $("#devled");
+  if(!chip) return;
+  chip.classList.remove("good","warn","bad");
+  if(deviceState.tone !== "muted") chip.classList.add(deviceState.tone);
+  led.title = deviceState.label;
+  chip.setAttribute("aria-label", `${deviceState.label}${
+    deviceState.battery_pct!=null ? `, battery ${Math.round(deviceState.battery_pct)}%` : ""}`);
+  if(deviceState.battery_pct != null){
+    pct.textContent = `${Math.round(deviceState.battery_pct)}%${deviceState.charging?"⚡":""}`;
+    pct.classList.remove("dim");
+  } else {
+    pct.textContent = "--%"; pct.classList.add("dim");
+  }
+  const panel = $("#devpanel");
+  if(panel) panel.outerHTML = devPanel();
+}
+
+function devPanel(){
+  const d = deviceState;
+  if(!d) return `<div id="devpanel" hidden></div>`;
+  const dot = {good:css("--good"),warn:css("--warn"),bad:css("--crit")}[d.tone] || css("--muted");
+  const bits = [];
+  if(d.battery_pct != null)
+    bits.push(`<span>Battery <b>${Math.round(d.battery_pct)}%</b>${d.charging?" (charging)":""}</span>`);
+  if(d.on_wrist != null) bits.push(`<span>${d.on_wrist ? "On wrist" : "Off wrist"}</span>`);
+  if(d.queued) bits.push(`<span>Waiting to upload <b>${d.queued.toLocaleString()}</b></span>`);
+  if(d.heartbeat_age_s != null)
+    bits.push(`<span>Last check-in <b>${d.heartbeat_age_s < 90
+      ? d.heartbeat_age_s + "s" : Math.round(d.heartbeat_age_s/60) + " min"}</b> ago</span>`);
+  return `<div class="devpanel" id="devpanel">
+    <div class="t"><span class="dot" style="background:${dot}"></span>${esc(d.label)}</div>
+    <p>${esc(d.detail)}</p>
+    ${bits.length?`<div class="kv">${bits.join("")}</div>`:""}
+  </div>`;
+}
+
+// The panel lives inside #content, which a tab render replaces wholesale, so
+// the open flag is module-level and the panel is re-inserted after each render.
+let devOpen = false;
+
+function syncDevPanel(){
+  const existing = $("#devpanel");
+  if(existing) existing.remove();
+  if(devOpen) $("#content").insertAdjacentHTML("afterbegin", devPanel());
+}
+
+(function(){
+  $("#dev").onclick = () => {
+    devOpen = !devOpen;
+    $("#dev").setAttribute("aria-expanded", String(devOpen));
+    syncDevPanel();
+  };
+  pollDevice();
+  setInterval(pollDevice, 20000);
+})();
 
 // ---------- theme ----------
 (function(){
@@ -956,6 +1058,7 @@ async function render(){
   try{
     await TABS[tab](el, stale);
     if(stale()) return;
+    syncDevPanel();
     say("#updated","updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
   }catch(e){
     if(stale()) return;

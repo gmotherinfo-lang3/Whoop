@@ -26,6 +26,7 @@ except ImportError:
 from whoop_bridge.config import Config
 from whoop_bridge.connection import WhoopBridge, scan
 from whoop_bridge.forwarder import Forwarder
+from whoop_bridge.heartbeat import Heartbeat
 from whoop_bridge.spool import Spool
 
 log = logging.getLogger("whoop.tray")
@@ -47,6 +48,7 @@ class TrayApp:
         self.spool = Spool(self.cfg.spool_path)
         self.bridge: WhoopBridge | None = None
         self.forwarder: Forwarder | None = None
+        self.heartbeat: Heartbeat | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self.thread: threading.Thread | None = None
         self.status = "stopped"
@@ -70,7 +72,10 @@ class TrayApp:
     def _title(self) -> str:
         queued = self.spool.depth()
         stats = self.bridge.stats if self.bridge else {}
+        battery = (self.bridge.device.get("battery_pct") if self.bridge else None)
         line = f"{self.status}  ·  {queued} queued"
+        if battery is not None:
+            line += f"  ·  {battery:.0f}% battery"
         if stats.get("records"):
             line += f"  ·  {stats['records']} records"
         return line
@@ -108,6 +113,13 @@ class TrayApp:
             cf_access_client_id=self.cfg.cf_access_client_id or None,
             cf_access_client_secret=self.cfg.cf_access_client_secret or None,
         )
+        self.heartbeat = Heartbeat(
+            self.bridge, self.spool, url=self.cfg.forward_url,
+            token=self.cfg.forward_token or None, interval=self.cfg.heartbeat_interval,
+            verify_tls=self.cfg.verify_tls,
+            cf_access_client_id=self.cfg.cf_access_client_id or None,
+            cf_access_client_secret=self.cfg.cf_access_client_secret or None,
+        )
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
         self._set("connecting", AMBER)
@@ -117,7 +129,7 @@ class TrayApp:
         asyncio.set_event_loop(self.loop)
         try:
             self.loop.run_until_complete(asyncio.gather(
-                self.bridge.run(), self.forwarder.run()))
+                self.bridge.run(), self.forwarder.run(), self.heartbeat.run()))
         except Exception:
             log.exception("bridge stopped unexpectedly")
             self._set("error", RED)
@@ -129,6 +141,8 @@ class TrayApp:
             self.bridge.stop()
         if self.forwarder:
             self.forwarder.stop()
+        if self.heartbeat:
+            self.heartbeat.stop()
         self._set("stopped", GREY)
 
     def do_scan(self, *_) -> None:

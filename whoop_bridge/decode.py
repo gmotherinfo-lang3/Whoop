@@ -14,7 +14,7 @@ import struct
 from datetime import datetime, timezone
 from typing import Any
 
-from .protocol import Frame, PacketType
+from .protocol import EVENT_NAMES, Event, Frame, PacketType
 
 # Plausible-unix window used to reject misparsed timestamps.
 UNIX_MIN, UNIX_MAX = 1_600_000_000, 1_900_000_000
@@ -93,8 +93,7 @@ def decode(frame: Frame, source: str, *, include_imu: bool = False) -> dict[str,
     elif frame.packet_type == PacketType.REALTIME_RAW_DATA:
         rec.update(_realtime_raw(raw, include_imu))
     elif frame.packet_type == PacketType.EVENT:
-        rec["event"] = _get(raw, 6, "B")
-        rec["event_time"] = _iso(_get(raw, 8, "<I"))
+        rec.update(_event(raw))
     elif frame.packet_type == PacketType.COMMAND_RESPONSE:
         rec["resp_cmd"] = _get(raw, 6, "B")
     elif frame.packet_type == PacketType.METADATA:
@@ -136,6 +135,34 @@ def _historical(raw: bytes, version: int) -> dict[str, Any]:
     if rr:
         out["rr_intervals_ms"] = rr
     out["decoded"] = True
+    return out
+
+
+def _event(raw: bytes) -> dict[str, Any]:
+    """EVENT (type 48). BATTERY_LEVEL carries a usable charge reading."""
+    number = _get(raw, 6, "B")
+    out: dict[str, Any] = {
+        "kind": "event",
+        "event": number,
+        "event_name": EVENT_NAMES.get(number, f"EVENT_{number}"),
+        "event_time": _iso(_get(raw, 8, "<I")),
+    }
+    if number == Event.BATTERY_LEVEL:
+        # State of charge is tenths of a percent at offset 17, millivolts at 21,
+        # and bit 0 of offset 26 is the charging flag.
+        soc = _get(raw, 17, "<H")
+        if soc is not None and soc <= 1100:
+            out["battery_pct"] = round(soc / 10.0, 1)
+        mv = _get(raw, 21, "<H")
+        if mv is not None and 3000 <= mv <= 4300:
+            out["battery_mv"] = mv
+        charging = _get(raw, 26, "B")
+        if charging is not None and charging <= 1:
+            out["battery_charging"] = bool(charging & 1)
+    elif number in (Event.CHARGING_ON, Event.CHARGING_OFF):
+        out["battery_charging"] = number == Event.CHARGING_ON
+    elif number in (Event.WRIST_ON, Event.WRIST_OFF):
+        out["on_wrist"] = number == Event.WRIST_ON
     return out
 
 

@@ -26,6 +26,35 @@ CHAR_MEMFAULT = "6108001b-8d6d-82b8-614a-1c8cb0f8dcc6"
 
 NOTIFY_CHARS = (CHAR_CMD_FROM_STRAP, CHAR_EVENTS_FROM_STRAP, CHAR_DATA_FROM_STRAP)
 
+# Standard BLE Battery Service. The strap implements it, so the battery level
+# is a plain uint8 percentage rather than something that needs decoding.
+CHAR_BATTERY_LEVEL = "00002a19-0000-1000-8000-00805f9b34fb"
+
+
+class Event:
+    """Event numbers carried at frame offset 6 of an EVENT packet."""
+    ERROR = 1
+    BATTERY_LEVEL = 3
+    CHARGING_ON = 7
+    CHARGING_OFF = 8
+    WRIST_ON = 9
+    WRIST_OFF = 10
+    BLE_CONNECTION_UP = 11
+    BLE_CONNECTION_DOWN = 12
+    RTC_LOST = 13
+    DOUBLE_TAP = 14
+    BOOT = 15
+
+
+EVENT_NAMES = {
+    0: "UNDEFINED", 1: "ERROR", 2: "CONSOLE_OUTPUT", 3: "BATTERY_LEVEL",
+    4: "SYSTEM_CONTROL", 5: "EXTERNAL_5V_ON", 6: "EXTERNAL_5V_OFF",
+    7: "CHARGING_ON", 8: "CHARGING_OFF", 9: "WRIST_ON", 10: "WRIST_OFF",
+    11: "BLE_CONNECTION_UP", 12: "BLE_CONNECTION_DOWN", 13: "RTC_LOST",
+    14: "DOUBLE_TAP", 15: "BOOT", 16: "SET_RTC", 17: "TEMPERATURE_LEVEL",
+    18: "PAIRING_MODE", 21: "BATTERY_PACK_CONNECTED", 22: "BATTERY_PACK_REMOVED",
+}
+
 SOF = 0xAA
 
 

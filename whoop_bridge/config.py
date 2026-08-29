@@ -29,6 +29,7 @@ class Config:
     cf_access_client_secret: str = ""
     batch_size: int = 50
     forward_interval: float = 5.0
+    heartbeat_interval: float = 30.0
     verify_tls: bool = True
 
     spool_path: str = "whoop-spool.db"

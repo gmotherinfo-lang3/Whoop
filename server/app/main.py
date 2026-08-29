@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from .advice import suggest
 from .analytics import summarise_day
 from .bundle import build_zip, bundle_status, download_allowed, public_base_url
+from .device import describe
 from .db import Database
 from .insights import analyse
 from .ml import MODEL_NAME, ActivityClassifier, classify
@@ -98,6 +99,18 @@ def ingest(batch: Batch, _: None = Depends(require_token)) -> dict[str, Any]:
         _invalidate_cache()
     return {"ok": True, "received": received, "inserted": inserted,
             "duplicates": received - inserted}
+
+
+@app.post("/status")
+def device_status(payload: dict[str, Any], _: None = Depends(require_token)) -> dict[str, Any]:
+    """Heartbeat from the laptop bridge. Same token as /ingest."""
+    db.put_device_status(payload)
+    return {"ok": True}
+
+
+@app.get("/api/device")
+def api_device() -> dict[str, Any]:
+    return describe(db.get_device_status())
 
 
 @app.get("/healthz")

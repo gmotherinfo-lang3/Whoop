@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 import threading
 from pathlib import Path
 from typing import Any, Iterable
@@ -79,6 +80,14 @@ CREATE TABLE IF NOT EXISTS model_state (
     trained_at TEXT NOT NULL,
     n_samples  INTEGER NOT NULL,
     accuracy   REAL
+);
+
+-- Latest heartbeat from the laptop bridge. One row; the timestamp is what
+-- distinguishes "strap is off" from "the laptop is asleep".
+CREATE TABLE IF NOT EXISTS device_status (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    received_at TEXT NOT NULL,
+    payload    TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS ingest_log (
@@ -363,6 +372,23 @@ class Database:
         d = dict(r)
         d["payload"] = json.loads(d["payload"])
         return d
+
+    # --- device status ------------------------------------------------------
+    def put_device_status(self, payload: dict[str, Any]) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO device_status (id, received_at, payload) "
+                "VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                "received_at=excluded.received_at, payload=excluded.payload",
+                (datetime.now(timezone.utc).isoformat(), json.dumps(payload)))
+            self._conn.commit()
+
+    def get_device_status(self) -> dict[str, Any] | None:
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM device_status WHERE id=1").fetchone()
+        if not r:
+            return None
+        return {"received_at": r["received_at"], **json.loads(r["payload"])}
 
     def close(self) -> None:
         with self._lock:

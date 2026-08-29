@@ -138,6 +138,23 @@ To start the tray at logon, put a shortcut to that last command in
 **Un-pair the strap from the WHOOP phone app first.** It bonds to one host at a
 time and the laptop will not see it otherwise.
 
+## Device status
+
+The bridge posts a heartbeat to `/status` every 30 seconds (same token as
+`/ingest`, so nothing extra to configure). That is what drives the status light
+in the dashboard, and it distinguishes three situations that otherwise look
+identical from the server's side:
+
+| Light | Meaning |
+|---|---|
+| Green | Laptop connected to the strap and receiving |
+| Amber | Bridge running, strap not visible — out of range, charging, or claimed by the phone app |
+| Red | No heartbeat for 2.5 minutes: the laptop is asleep or off |
+
+A stale heartbeat is treated as offline even if its last payload said
+"connected", because that is what a laptop dying mid-session looks like. Set
+`heartbeat_interval` in `config.toml` to change the cadence.
+
 ## 4. Check it end to end
 
 ```bash

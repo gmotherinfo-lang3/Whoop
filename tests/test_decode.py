@@ -88,3 +88,28 @@ def test_record_id_is_stable_content_hash():
 
     other = make_frame(47, 24, [(11, "<I", 1735689601), (21, "B", 62)])
     assert decode(parse_frame(other), "data")["record_id"] != a["record_id"]
+
+
+def test_battery_event_is_decoded():
+    # BATTERY_LEVEL (event 3): state of charge in tenths at 17, mV at 21,
+    # charging flag in bit 0 of 26.
+    frame = make_frame(48, 1, [(6, "B", 3), (8, "<I", 1735689600),
+                               (17, "<H", 873), (21, "<H", 3920), (26, "B", 1)])
+    rec = decode(parse_frame(frame), "events")
+    assert rec["event_name"] == "BATTERY_LEVEL"
+    assert rec["battery_pct"] == 87.3
+    assert rec["battery_mv"] == 3920
+    assert rec["battery_charging"] is True
+
+
+def test_implausible_battery_values_are_dropped():
+    frame = make_frame(48, 1, [(6, "B", 3), (17, "<H", 9999), (21, "<H", 100)])
+    rec = decode(parse_frame(frame), "events")
+    assert "battery_pct" not in rec and "battery_mv" not in rec
+
+
+def test_charging_and_wrist_events():
+    on = decode(parse_frame(make_frame(48, 1, [(6, "B", 7)])), "events")
+    assert on["event_name"] == "CHARGING_ON" and on["battery_charging"] is True
+    off = decode(parse_frame(make_frame(48, 1, [(6, "B", 10)])), "events")
+    assert off["event_name"] == "WRIST_OFF" and off["on_wrist"] is False

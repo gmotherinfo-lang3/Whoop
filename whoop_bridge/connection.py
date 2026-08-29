@@ -69,11 +69,23 @@ class WhoopBridge:
         # Strong refs to in-flight ack tasks: asyncio only keeps weak ones, so
         # an unreferenced task can be garbage-collected before it runs.
         self._tasks: set[asyncio.Task] = set()
+        # Live device state, published to the server so the dashboard can show
+        # whether the strap is actually connected and how much charge it has.
+        self.device = {
+            "connected": False, "battery_pct": None, "battery_mv": None,
+            "charging": None, "on_wrist": None, "last_packet_at": None,
+            "last_connected_at": None, "address": address,
+        }
         self.stats = {"frames": 0, "records": 0, "crc_errors": 0, "chunks_acked": 0}
 
     @property
     def is_connected(self) -> bool:
         return self._client is not None and self._client.is_connected
+
+    def status(self, spool_depth: int) -> dict:
+        """Snapshot for the server heartbeat."""
+        return {**self.device, "connected": self.is_connected,
+                "queued": spool_depth, "stats": dict(self.stats)}
 
     # --- command plumbing ---------------------------------------------------
     def _next_seq(self) -> int:
@@ -96,8 +108,15 @@ class WhoopBridge:
             self._ingest(bytes(data), source)
         return on_notify
 
+    def _on_battery(self, _sender, data: bytearray) -> None:
+        """Standard 0x2A19: a single byte of percent."""
+        if data:
+            self.device["battery_pct"] = float(data[0])
+            log.debug("battery %d%%", data[0])
+
     def _ingest(self, data: bytes, source: str) -> None:
         self.stats["frames"] += 1
+        self.device["last_packet_at"] = _now()
         frame = P.parse_frame(data)
         if frame is None:
             self.spool.put({"source": source, "kind": "unparsed", "raw_hex": data.hex()})
@@ -109,6 +128,12 @@ class WhoopBridge:
         record = decode(frame, source, include_imu=self.include_imu)
         self.spool.put(record)
         self.stats["records"] += 1
+
+        # Events carry charge and wrist state; keep the live snapshot current.
+        for key, field in (("battery_pct", "battery_pct"), ("battery_mv", "battery_mv"),
+                           ("battery_charging", "charging"), ("on_wrist", "on_wrist")):
+            if key in record:
+                self.device[field] = record[key]
 
         if frame.packet_type == P.PacketType.HISTORICAL_DATA:
             self._pending += 1
@@ -185,7 +210,18 @@ class WhoopBridge:
         async with BleakClient(self.address, timeout=30.0) as client:
             self._client = client
             log.info("connected")
+            self.device["last_connected_at"] = _now()
             available = {c.uuid.lower() for s in client.services for c in s.characteristics}
+
+            # Standard battery service, if the strap exposes it.
+            if P.CHAR_BATTERY_LEVEL.lower() in available:
+                try:
+                    value = await client.read_gatt_char(P.CHAR_BATTERY_LEVEL)
+                    self._on_battery(None, value)
+                    await client.start_notify(P.CHAR_BATTERY_LEVEL, self._on_battery)
+                except BleakError as exc:
+                    log.debug("battery characteristic unavailable: %s", exc)
+
             for uuid in P.NOTIFY_CHARS:
                 if uuid.lower() in available:
                     await client.start_notify(uuid, self._handler(_label(uuid)))
@@ -207,6 +243,7 @@ class WhoopBridge:
             if client.is_connected:
                 await self._send(P.Cmd.EXIT_HIGH_FREQ_SYNC)
         self._client = None
+        self.device["connected"] = False
 
     async def run(self) -> None:
         delay = self.reconnect_delay
@@ -231,6 +268,11 @@ class WhoopBridge:
 
     def stop(self) -> None:
         self._stop.set()
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _label(uuid: str) -> str:

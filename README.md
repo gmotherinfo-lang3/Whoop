@@ -71,6 +71,13 @@ The server also learns from your data over time — see
   signal from concordant deviations in resting HR, HRV, skin temperature and
   respiration.
 
+A device chip in the top right shows the strap's battery and a status light:
+green when the laptop is connected to the strap, amber when the bridge is
+running but cannot see it, red when the laptop itself has stopped checking in.
+Tap it for the detail. Battery comes from the strap's standard BLE battery
+service, with the proprietary `BATTERY_LEVEL` event (which also carries voltage
+and charging state) as a second source.
+
 The dashboard is dark by default with a light toggle, leads with a recovery
 ring plus strain and sleep meters, and uses a bottom tab bar on phones. Colour
 carries meaning only alongside a label, effect sizes are grouped by outcome so

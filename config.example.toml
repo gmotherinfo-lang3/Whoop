@@ -41,6 +41,10 @@ cf_access_client_id = ""
 cf_access_client_secret = ""
 batch_size = 50
 forward_interval = 5.0
+
+# How often to tell the server the bridge and strap are alive. This is what
+# drives the connection dot and battery readout in the dashboard.
+heartbeat_interval = 30.0
 verify_tls = true
 
 [storage]
