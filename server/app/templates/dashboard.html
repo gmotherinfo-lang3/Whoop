@@ -30,6 +30,9 @@ body{margin:0;color:var(--ink);
   font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   padding:max(10px,env(safe-area-inset-top)) 14px calc(78px + env(safe-area-inset-bottom));
   -webkit-font-smoothing:antialiased}
+nav button{transition:color .2s,background .2s}
+nav button .g{transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+nav button[aria-selected="true"] .g{transform:translateY(-1px) scale(1.12)}
 .wrap{max-width:600px;margin:0 auto}
 
 header{display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -45,6 +48,78 @@ button.icon{background:transparent;border:1px solid var(--line);color:var(--ink2
   padding:18px;margin-bottom:12px}
 h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
   margin:0 0 14px;font-weight:600}
+
+/* ---- motion ----
+   Everything here is decoration on top of a layout that already works, so it
+   all switches off for anyone who asks for reduced motion. */
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.stagger>*{animation:rise .42s cubic-bezier(.22,1,.36,1) backwards}
+.stagger>*:nth-child(1){animation-delay:.02s} .stagger>*:nth-child(2){animation-delay:.07s}
+.stagger>*:nth-child(3){animation-delay:.12s} .stagger>*:nth-child(4){animation-delay:.17s}
+.stagger>*:nth-child(5){animation-delay:.22s} .stagger>*:nth-child(6){animation-delay:.27s}
+.stagger>*:nth-child(n+7){animation-delay:.31s}
+.ringarc{transition:stroke-dashoffset .95s cubic-bezier(.22,1,.36,1)}
+.chip-press{transition:transform .12s ease,background .15s ease,border-color .15s ease}
+.chip-press:active{transform:scale(.95)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+
+/* ---- sticky ring bar ---- */
+.ringbar{position:sticky;top:0;z-index:8;background:var(--bg);margin:0 -14px 12px;
+  padding:2px 14px 10px;transition:padding .3s cubic-bezier(.4,0,.2,1),
+  box-shadow .3s,border-color .3s;border-bottom:1px solid transparent}
+.ringbar.compact{padding-top:8px;padding-bottom:6px;border-bottom-color:var(--line);
+  box-shadow:0 6px 18px -12px rgba(0,0,0,.6)}
+.datenav{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px;
+  transition:opacity .25s,max-height .3s,margin .3s;overflow:hidden;max-height:44px}
+.ringbar.compact .datenav{opacity:0;max-height:0;margin-bottom:0;pointer-events:none}
+.datenav button{background:transparent;border:none;color:var(--muted);cursor:pointer;
+  font:inherit;font-size:17px;padding:5px 11px;border-radius:9px;line-height:1}
+.datenav button:disabled{opacity:.28;cursor:default}
+.datenav .lbl{background:var(--card);border:1px solid var(--line);border-radius:999px;
+  padding:7px 20px;font-size:12px;font-weight:650;letter-spacing:.09em;
+  text-transform:uppercase;min-width:126px;text-align:center}
+.rings{display:grid;grid-template-columns:repeat(3,1fr);align-items:start;
+  padding-top:4px}
+.ringcell{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.ringcell .rg{position:relative;display:grid;place-items:center;
+  width:96px;height:96px;transform-origin:50% 0;
+  transition:transform .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1)}
+/* Scale AND shrink the box, so the collapsed bar really is 38px tall. */
+.ringbar.compact .ringcell .rg{transform:scale(.40);height:38px}
+.ringcell .rgv{position:absolute;font-size:22px;font-weight:600;letter-spacing:-.02em;
+  transition:opacity .22s}
+.ringcell .rgv small{font-size:12px;color:var(--muted);font-weight:500}
+.ringbar.compact .ringcell .rgv{opacity:0}
+.ringcell .cap{font-size:10px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--muted);font-weight:600;transition:color .25s}
+.ringcell .cap b{color:var(--ink);font-weight:600}
+.ringbar.compact .ringcell .cap{color:var(--ink2)}
+
+/* ---- health monitor strip ---- */
+.hm{display:grid;grid-template-columns:repeat(5,1fr)}
+.hm .c{text-align:center;padding:2px 3px;position:relative}
+.hm .c+.c::before{content:"";position:absolute;left:0;top:14%;bottom:14%;
+  width:1px;background:var(--line)}
+.hm .c svg{opacity:.65;margin-bottom:5px}
+.hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.hm .c .v{font-size:15px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+.hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
+.hm .c .v.none{color:var(--muted);font-weight:400}
+
+/* ---- aligned strain / recovery rows ---- */
+.drs{display:flex;flex-direction:column;gap:7px}
+.dr{display:grid;grid-template-columns:38px 1fr 30px 1fr 26px;align-items:center;gap:7px}
+.dr-d{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dr-b{height:8px;background:var(--track);border-radius:4px;overflow:hidden}
+.dr-b i{display:block;height:100%;border-radius:4px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+.dr-v{font-size:10.5px;color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums}
+
+/* ---- section heading ---- */
+.sect{font-size:19px;font-weight:650;letter-spacing:-.015em;margin:22px 2px 12px}
 
 /* ---- hero ring ---- */
 .hero{display:flex;flex-direction:column;align-items:center;text-align:center;
@@ -256,14 +331,24 @@ function css(name){ return getComputedStyle(document.documentElement).getPropert
 function ringSVG(value, max, color, size, stroke){
   const r=(size-stroke)/2, C=2*Math.PI*r;
   const pct = value===null||value===undefined ? 0 : Math.max(0,Math.min(1,value/max));
+  // Starts empty and animates to the value once inserted (see drawRings).
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
     <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
       stroke="${css('--track')}" stroke-width="${stroke}"/>
-    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
+    <circle class="ringarc" cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
       stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
-      stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}"
+      stroke-dasharray="${C}" stroke-dashoffset="${C}" data-to="${C*(1-pct)}"
       transform="rotate(-90 ${size/2} ${size/2})"/>
   </svg>`;
+}
+
+function drawRings(root){
+  const arcs = root.querySelectorAll(".ringarc[data-to]");
+  if(!arcs.length) return;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    arcs.forEach(a => { a.setAttribute("stroke-dashoffset", a.dataset.to);
+                        delete a.dataset.to; });
+  }));
 }
 const BANDS = {green:{c:"var(--good)",t:"Recovered"},yellow:{c:"var(--warn)",t:"Adequate"},
                red:{c:"var(--crit)",t:"Low"}};
@@ -339,110 +424,243 @@ function wireCharts(root){
   });
 }
 
+const HM_ICONS = {
+  resp:'<path d="M10 3v7M10 10c0 4-2 6-4 6s-3-1-3-3 1-4 2-6M10 10c0 4 2 6 4 6s3-1 3-3-1-4-2-6"/>',
+  spo2:'<path d="M10 3c3 4 5 6 5 9a5 5 0 0 1-10 0c0-3 2-5 5-9z"/>',
+  rhr:'<path d="M17 6.5a3.5 3.5 0 0 0-6-2.4A3.5 3.5 0 0 0 5 6.5c0 3.6 6 8 6 8s6-4.4 6-8z"/>',
+  hrv:'<path d="M2 10h3l2-5 3 10 2.5-7 1.5 2h4"/>',
+  temp:'<path d="M10 3.5a2 2 0 0 1 2 2v6.2a3.5 3.5 0 1 1-4 0V5.5a2 2 0 0 1 2-2z"/>'
+};
+
+function hmIcon(kind){
+  return `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"
+    stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">${HM_ICONS[kind]}</svg>`;
+}
+
+// The raw ADC channels have no real-world unit, so the number alone means
+// nothing. What is readable is how far it sits from your own baseline.
+function hmCell(kind, label, value, baseline, unit, higherBetter, raw){
+  if(value===null||value===undefined)
+    return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+      <div class="v none">–</div></div>`;
+  let delta = "";
+  if(baseline){
+    const pct = (value-baseline)/baseline*100;
+    if(Math.abs(pct) >= 0.4){
+      const good = higherBetter ? pct>0 : pct<0;
+      delta = `<div class="d" style="color:${good?css('--good'):css('--crit')}">
+        ${pct>0?"▲":"▼"} ${Math.abs(pct).toFixed(1)}%</div>`;
+    } else {
+      delta = `<div class="d" style="color:var(--muted)">— normal</div>`;
+    }
+  }
+  const shown = raw ? Math.round(value).toLocaleString() : fmt(value, 0);
+  return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+    <div class="v">${shown}</div>${delta}</div>`;
+}
+
 // ---------- Today ----------
+function shiftDate(days){
+  const d = new Date(state.date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  const iso = d.toISOString().slice(0,10);
+  if(iso > today()) return;
+  state.date = iso; render();
+}
+
+function dateLabel(){
+  if(state.date === today()) return "Today";
+  const d = new Date(state.date + "T00:00:00Z");
+  const y = new Date(); y.setUTCDate(y.getUTCDate()-1);
+  if(state.date === y.toISOString().slice(0,10)) return "Yesterday";
+  return d.toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
+}
+
+function ringBar(t, band){
+  const bandColor = {green:css("--good"),yellow:css("--warn"),red:css("--crit")}[t.recovery.band]
+    || css("--muted");
+  const cell = (cap, valueHTML, svg) => `<div class="ringcell">
+      <div class="rg">${svg}<div class="rgv">${valueHTML}</div></div>
+      <div class="cap">${cap}</div></div>`;
+  return `<div class="ringbar" id="ringbar">
+    <div class="datenav">
+      <button id="dprev" aria-label="Previous day">‹</button>
+      <span class="lbl">${dateLabel()}</span>
+      <button id="dnext" aria-label="Next day" ${state.date>=today()?"disabled":""}>›</button>
+    </div>
+    <div class="rings">
+      ${cell("Sleep",
+        t.sleep.performance_pct!=null?`${Math.round(t.sleep.performance_pct)}<small>%</small>`:"–",
+        ringSVG(t.sleep.performance_pct,100,css("--sleep"),96,8))}
+      ${cell(`Recovery`,
+        t.recovery.score!=null?`${t.recovery.score}<small>%</small>`:"–",
+        ringSVG(t.recovery.score,100,bandColor,96,8))}
+      ${cell("Strain",
+        t.strain.score!=null?`${fmt(t.strain.score,1)}`:"–",
+        ringSVG(t.strain.score,21,css("--strain"),96,8))}
+    </div>
+  </div>`;
+}
+
 async function renderToday(el, stale){
   const [data, advice] = await Promise.all([
     api("/api/summary?days=14"),
-    api("/api/advice").catch(e=>({ready:false, reason:e.message, suggestions:[]}))
+    api(`/api/advice?date=${state.date}`).catch(e=>({ready:false,reason:e.message,suggestions:[]}))
   ]);
   if(stale()) return;
   const days = data.days.filter(d=>d.has_data);
-  if(!days.length){
-    el.innerHTML = `<div class="card"><div class="empty">No data yet.<br><br>
+  const t = data.days.find(d=>d.date===state.date) || days[0];
+
+  if(!t || !t.has_data){
+    el.innerHTML = (t?ringBar({sleep:{},recovery:{},strain:{}},null):"") +
+      `<div class="card"><div class="empty">No data for ${esc(dateLabel().toLowerCase())}.<br><br>
       Once the laptop bridge forwards a sync, everything appears here.</div></div>`;
+    wireRingBar(); drawRings(el);
     return;
   }
-  const t=days[0], rec=t.recovery||{}, band=BANDS[rec.band]||{c:"var(--muted)",t:"Not enough data"};
-  const prev = days[1];
-  const sh=Math.floor((t.sleep.total_minutes||0)/60), sm=(t.sleep.total_minutes||0)%60;
-  const strainPct = t.strain.score;
 
-  const ICON={warning:"⚠",notice:"●",info:"✓"};
-  const sugHTML = (advice.ready && advice.suggestions.length)
-    ? advice.suggestions.map(s=>`<div class="sug ${s.severity}">
-        <div class="top"><span class="ic">${ICON[s.severity]||"•"}</span><h3>${esc(s.headline)}</h3></div>
-        <p>${esc(s.detail)}</p>
-        <details class="more"><summary>confidence: ${s.confidence}</summary>
-          <p>${esc(advice.disclaimer)}</p></details>
-      </div>`).join("")
+  const band = BANDS[t.recovery.band] || {c:"var(--muted)", t:"Not enough data"};
+  const ICON = {warning:"⚠", notice:"●", info:"✓"};
+  const sug = (advice.ready && advice.suggestions.length)
+    ? advice.suggestions.map(x=>`<div class="sug ${x.severity}">
+        <div class="top"><span class="ic">${ICON[x.severity]||"•"}</span><h3>${esc(x.headline)}</h3></div>
+        <p>${esc(x.detail)}</p>
+        <details class="more"><summary>confidence: ${x.confidence}</summary>
+          <p>${esc(advice.disclaimer)}</p></details></div>`).join("")
     : "";
 
-  let html = `<div class="card hero">
-    <div class="ringwrap">
-      ${ringSVG(rec.score, 100, band.c==="var(--good)"?css("--good"):band.c==="var(--warn)"?css("--warn"):band.c==="var(--crit)"?css("--crit"):css("--muted"), 200, 16)}
-      <div class="inner">
-        <div class="figure">${rec.score ?? "–"}${rec.score!=null?'<span class="pc">%</span>':""}</div>
-        <div class="sub" style="margin-top:2px">Recovery</div>
+  const sb = t.baselines.sensors || {};
+  const sen = t.sensors || {};
+  const prev = days[days.indexOf(t)+1];
+
+  el.innerHTML = ringBar(t, band) + `
+  <div class="stagger">
+    <div class="card" style="padding:15px 18px">
+      <div class="band" style="justify-content:center;margin:0">
+        <span class="dot" style="background:${band.c}"></span>${band.t}
+        <span class="muted" style="margin-left:6px;font-weight:400">
+          ${t.recovery.score==null ? esc(t.recovery.note||"")
+            : `· HRV ${fmt(t.recovery.components.hrv)} · RHR ${fmt(t.recovery.components.resting_hr)} · Sleep ${fmt(t.recovery.components.sleep)}`}</span>
       </div>
     </div>
-    <div class="band"><span class="dot" style="background:${band.c}"></span>${band.t}</div>
-    <div class="why">${rec.score==null ? esc(rec.note||"not enough data")
-      : `HRV ${fmt(rec.components.hrv)} · Resting HR ${fmt(rec.components.resting_hr)} · Sleep ${fmt(rec.components.sleep)}`}</div>
-  </div>
 
-  <div class="meters">
-    <div class="meter">
-      <div class="ringwrap">${ringSVG(strainPct,21,css("--strain"),72,8)}</div>
-      <div class="txt"><div class="lbl">Strain</div>
-        <div class="val">${fmt(strainPct,1)}<small> / 21</small></div>
-        <div class="note">${strainPct>=15?"hard day":strainPct>=9?"moderate":"light"}</div></div>
+    ${sug}
+
+    <div class="card"><h2>Health monitor</h2>
+      <div class="hm">
+        ${hmCell("resp","Resp",sen.resp_rate_raw,sb.resp_rate_raw,"",false,true)}
+        ${hmCell("spo2","SpO₂",sen.spo2_red,sb.spo2_red,"",true,true)}
+        ${hmCell("rhr","RHR",t.heart_rate.resting,t.baselines.resting_hr,"bpm",false,false)}
+        ${hmCell("hrv","HRV",t.hrv.rmssd_ms,t.baselines.hrv_rmssd_ms,"ms",true,false)}
+        ${hmCell("temp","Temp",sen.skin_temp_raw,sb.skin_temp_raw,"",false,true)}
+      </div>
+      <details class="more"><summary>why some of these have no units</summary>
+        <p>RHR and HRV are real measurements. Resp, SpO₂ and Temp come off the strap
+        as raw sensor counts — WHOOP converts those to % and °C in their cloud, which
+        this cannot do. The percentage under each is the honest part: how far today
+        sits from your own ${t.baselines.window_days}-day baseline. Measured over
+        ${esc((sen.measured_over||"the day").replace("_"," "))}.</p></details>
     </div>
-    <div class="meter">
-      <div class="ringwrap">${ringSVG(t.sleep.performance_pct,100,css("--sleep"),72,8)}</div>
-      <div class="txt"><div class="lbl">Sleep</div>
-        <div class="val">${sh}<small>h </small>${sm}<small>m</small></div>
-        <div class="note">${t.sleep.performance_pct!=null?`${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h`:"none detected"}</div></div>
+
+    <div class="stats">
+      ${statTile("Sleep", (() => {const m=t.sleep.total_minutes||0;
+        return `${Math.floor(m/60)}<small>h </small>${m%60}<small>m</small>`;})(), "",
+        t.sleep.total_minutes, prev&&prev.sleep.total_minutes, true,
+        t.sleep.performance_pct!=null?`${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h goal`:"none detected",
+        m => m>=60 ? `${Math.floor(m/60)}h ${Math.round(m%60)}m` : `${Math.round(m)}m`)}
+      ${statTile("Strain", fmt(t.strain.score,1), "/ 21", t.strain.score,
+        prev&&prev.strain.score, true,
+        t.strain.score>=15?"hard day":t.strain.score>=9?"moderate":"light")}
     </div>
-  </div>
 
-  ${sugHTML}
+    <div class="card"><h2>HRV — last ${data.days.length} days</h2>
+      ${lineChart(data.days.slice().reverse().map(d=>({t:d.date.slice(5),
+        v:d.has_data&&d.hrv.rmssd_ms!=null?d.hrv.rmssd_ms:null})),
+        {color:css("--strain"), unit:" ms", label:"HRV RMSSD"})}
+      <div class="legend"><span><i style="background:${css('--strain')}"></i>HRV (RMSSD), ms</span></div>
+    </div>
 
-  <div class="stats">
-    ${statTile("HRV",fmt(t.hrv.rmssd_ms,1),"ms",t.hrv.rmssd_ms,prev&&prev.hrv.rmssd_ms,true,
-      `${t.baselines.hrv_rmssd_ms?`baseline ${fmt(t.baselines.hrv_rmssd_ms,1)}`:"building baseline"}`)}
-    ${statTile("Resting HR",fmt(t.heart_rate.resting,1),"bpm",t.heart_rate.resting,
-      prev&&prev.heart_rate.resting,false,
-      `${t.baselines.resting_hr?`baseline ${fmt(t.baselines.resting_hr,1)}`:"building baseline"}`)}
-  </div>
+    <div class="card"><h2>Strain and recovery — last ${days.length} days</h2>
+      ${dualRows(days.slice(0,14).reverse())}
+      <div class="legend">
+        <span><i style="background:${css('--strain')}"></i>Strain, 0–21</span>
+        <span>Recovery, 0–100%:
+          <i style="background:${css('--good')}"></i>recovered
+          <i style="background:${css('--warn')}"></i>adequate
+          <i style="background:${css('--crit')}"></i>low</span></div>
+      <details class="more"><summary>why these are two rows, not one chart</summary>
+        <p>Strain runs 0–21 and recovery runs 0–100%. Drawing them on one plot needs
+        two different y-axes, which makes any crossing point look meaningful when it
+        is just an artefact of the scales chosen. Two aligned rows compare the same
+        days without inventing that.</p></details>
+    </div>
 
-  <div class="card"><h2>HRV — last ${data.days.length} days</h2>
-    ${lineChart(data.days.slice().reverse().map(d=>({t:d.date.slice(5),
-      v:d.has_data&&d.hrv.rmssd_ms!=null?d.hrv.rmssd_ms:null})),
-      {color:css("--strain"), unit:" ms", label:"HRV RMSSD"})}
-    <div class="legend"><span><i style="background:${css('--strain')}"></i>HRV (RMSSD), ms</span></div>
-  </div>
+    <div class="card"><h2>Recent days</h2><div class="scroll"><table>
+      <tr><th>Date</th><th>Recovery</th><th>Strain</th><th>Sleep</th><th>HRV</th><th>RHR</th></tr>
+      ${days.slice(0,14).map(d=>{const b=BANDS[d.recovery.band];
+        return `<tr><td>${d.date.slice(5)}</td>
+        <td>${b?`<span class="dot" style="background:${b.c};margin-right:5px"></span>`:""}${d.recovery.score ?? "–"}</td>
+        <td>${fmt(d.strain.score,1)}</td>
+        <td>${Math.floor((d.sleep.total_minutes||0)/60)}h ${(d.sleep.total_minutes||0)%60}m</td>
+        <td>${fmt(d.hrv.rmssd_ms,1)}</td><td>${fmt(d.heart_rate.resting,1)}</td></tr>`;}).join("")}
+    </table></div></div>
 
-  <div class="card"><h2>Recent days</h2><div class="scroll"><table>
-    <tr><th>Date</th><th>Recovery</th><th>Strain</th><th>Sleep</th><th>HRV</th><th>RHR</th></tr>
-    ${days.map(d=>{const b=BANDS[d.recovery.band];
-      return `<tr><td>${d.date.slice(5)}</td>
-      <td>${b?`<span class="dot" style="background:${b.c};margin-right:5px"></span>`:""}${d.recovery.score ?? "–"}</td>
-      <td>${fmt(d.strain.score,1)}</td>
-      <td>${Math.floor((d.sleep.total_minutes||0)/60)}h ${(d.sleep.total_minutes||0)%60}m</td>
-      <td>${fmt(d.hrv.rmssd_ms,1)}</td><td>${fmt(d.heart_rate.resting,1)}</td></tr>`;}).join("")}
-  </table></div></div>
+    <details class="more"><summary>How these numbers are made</summary>
+      <p>Recovery, strain and sleep are computed on this server from raw sensor data
+      using published methods. They are not WHOOP's values and will not match the
+      official app. Not medical measurements.</p></details>
+  </div>`;
 
-  <details class="more"><summary>How these numbers are made</summary>
-    <p>Recovery, strain and sleep are computed on this server from raw sensor data
-    using published methods. They are not WHOOP's values and will not match the
-    official app. SpO₂, skin temperature and respiratory rate are raw sensor counts,
-    not real-world units. Not medical measurements.</p></details>`;
-
-  el.innerHTML = html;
+  wireRingBar();
+  drawRings(el);
   wireCharts(el);
   say("#stats", statsLine(data.stats));
 }
 
-function statTile(label, value, unit, now, before, higherBetter, note){
+// Two aligned rows rather than a dual-axis chart: same days, own scale each.
+function dualRows(days){
+  if(!days.length) return `<div class="empty">Not enough days yet.</div>`;
+  const row = (d) => {
+    const st = Math.max(0,Math.min(1,(d.strain.score||0)/21))*100;
+    const rc = d.recovery.score==null ? null : Math.max(0,Math.min(1,d.recovery.score/100))*100;
+    const bc = {green:css("--good"),yellow:css("--warn"),red:css("--crit")}[d.recovery.band]||css("--muted");
+    return `<div class="dr">
+      <div class="dr-d">${d.date.slice(5)}</div>
+      <div class="dr-b"><i style="width:${st}%;background:${css('--strain')}"></i></div>
+      <div class="dr-v">${fmt(d.strain.score,1)}</div>
+      <div class="dr-b"><i style="width:${rc??0}%;background:${bc}"></i></div>
+      <div class="dr-v">${d.recovery.score ?? "–"}</div>
+    </div>`;
+  };
+  return `<div class="drs">${days.map(row).join("")}</div>`;
+}
+
+function wireRingBar(){
+  const bar = $("#ringbar");
+  if(!bar) return;
+  const prev = $("#dprev"), next = $("#dnext");
+  if(prev) prev.onclick = () => shiftDate(-1);
+  if(next) next.onclick = () => shiftDate(1);
+  const onScroll = () => bar.classList.toggle("compact", window.scrollY > 64);
+  onScroll();
+  window.removeEventListener("scroll", window.__ringScroll);
+  window.__ringScroll = onScroll;
+  window.addEventListener("scroll", onScroll, {passive:true});
+}
+
+function statTile(label, value, unit, now, before, higherBetter, note, deltaFmt){
   let delta = "";
   if(now!=null && before!=null){
     const d = now-before, good = higherBetter ? d>0 : d<0;
-    if(Math.abs(d) >= 0.05)
+    if(Math.abs(d) >= 0.05){
+      const shown = deltaFmt ? deltaFmt(Math.abs(d)) : Math.abs(d).toFixed(1);
       delta = `<div class="delta" style="color:${good?css('--good'):css('--crit')}">
-        ${d>0?"▲":"▼"} ${Math.abs(d).toFixed(1)} vs yesterday</div>`;
+        ${d>0?"▲":"▼"} ${shown} vs yesterday</div>`;
+    }
   }
   return `<div class="stat"><div class="lbl">${label}</div>
-    <div class="val">${value}<small> ${unit}</small></div>
+    <div class="val">${value}${unit?`<small> ${unit}</small>`:""}</div>
     ${delta}<div class="note">${note}</div></div>`;
 }
 

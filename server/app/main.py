@@ -143,6 +143,13 @@ def _raw_summary(day: datetime) -> dict[str, Any]:
     return cached
 
 
+SENSOR_FIELDS = ("skin_temp_raw", "resp_rate_raw", "spo2_red", "spo2_ir")
+
+
+def _median(values: list[float]) -> float | None:
+    return round(sorted(values)[len(values) // 2], 1) if values else None
+
+
 def _baselines(before: datetime, days: int) -> tuple[float | None, float | None]:
     """Rolling personal baselines: median HRV and resting HR over `days`."""
     hrvs, rhrs = [], []
@@ -154,8 +161,22 @@ def _baselines(before: datetime, days: int) -> tuple[float | None, float | None]
             hrvs.append(s["hrv"]["rmssd_ms"])
         if s["heart_rate"]["resting"]:
             rhrs.append(s["heart_rate"]["resting"])
-    med = lambda xs: round(sorted(xs)[len(xs) // 2], 1) if xs else None
-    return med(hrvs), med(rhrs)
+    return _median(hrvs), _median(rhrs)
+
+
+def _sensor_baselines(before: datetime, days: int) -> dict[str, float | None]:
+    """Median of each raw sensor channel. These have no real-world unit, so a
+    comparison against your own history is the only reading that means anything."""
+    collected: dict[str, list[float]] = {f: [] for f in SENSOR_FIELDS}
+    for i in range(1, days + 1):
+        s = _raw_summary(before - timedelta(days=i))
+        if not s.get("has_data"):
+            continue
+        for field in SENSOR_FIELDS:
+            value = (s.get("sensors") or {}).get(field)
+            if isinstance(value, (int, float)):
+                collected[field].append(float(value))
+    return {f: _median(v) for f, v in collected.items()}
 
 
 def _summarise(day: datetime) -> dict[str, Any]:
@@ -169,7 +190,8 @@ def _summarise(day: datetime) -> dict[str, Any]:
                       hrv_baseline=hrv_base, rhr_baseline=rhr_base)
     s["date"] = key
     s["baselines"] = {"hrv_rmssd_ms": hrv_base, "resting_hr": rhr_base,
-                      "window_days": BASELINE_DAYS}
+                      "window_days": BASELINE_DAYS,
+                      "sensors": _sensor_baselines(day, BASELINE_DAYS)}
     _final_cache[key] = s
     _trim_cache(_final_cache)
     return s
