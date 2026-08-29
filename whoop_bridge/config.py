@@ -30,6 +30,8 @@ class Config:
     batch_size: int = 50
     forward_interval: float = 5.0
     heartbeat_interval: float = 30.0
+    update_check_interval: float = 3600.0
+    auto_update: bool = True
     verify_tls: bool = True
 
     spool_path: str = "whoop-spool.db"

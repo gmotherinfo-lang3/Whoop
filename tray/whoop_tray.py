@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -28,6 +29,7 @@ from whoop_bridge.connection import WhoopBridge, scan
 from whoop_bridge.forwarder import Forwarder
 from whoop_bridge.heartbeat import Heartbeat
 from whoop_bridge.spool import Spool
+from whoop_bridge.updater import Updater, apply_pending
 
 log = logging.getLogger("whoop.tray")
 
@@ -49,6 +51,7 @@ class TrayApp:
         self.bridge: WhoopBridge | None = None
         self.forwarder: Forwarder | None = None
         self.heartbeat: Heartbeat | None = None
+        self.updater = Updater(self.cfg, interval=self.cfg.update_check_interval)
         self.loop: asyncio.AbstractEventLoop | None = None
         self.thread: threading.Thread | None = None
         self.status = "stopped"
@@ -61,6 +64,10 @@ class TrayApp:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Start", self.start, enabled=lambda _: not self._running()),
             pystray.MenuItem("Stop", self.stop, enabled=lambda _: self._running()),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(lambda _: self._update_label(), self.do_update,
+                             visible=lambda _: self._update_ready()),
+            pystray.MenuItem("Check for updates", self.check_updates),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Find my strap…", self.do_scan),
             pystray.MenuItem("Open dashboard", self.open_dashboard),
@@ -79,6 +86,36 @@ class TrayApp:
         if stats.get("records"):
             line += f"  ·  {stats['records']} records"
         return line
+
+    def _update_ready(self) -> bool:
+        return bool(self.updater.status.get("pending"))
+
+    def _update_label(self) -> str:
+        return f"Restart to update to {self.updater.status['pending']}"
+
+    def check_updates(self, *_) -> None:
+        def worker() -> None:
+            self.icon.notify("Checking…", "Whoop bridge")
+            status = self.updater.check()
+            if status.get("pending"):
+                self.icon.notify(
+                    f"Version {status['pending']} is ready. It applies when the "
+                    "bridge restarts.", "Update available")
+            else:
+                self.icon.notify(f"{status['state']} (installed {status['installed']})",
+                                 "Whoop bridge")
+            self.icon.update_menu()
+        threading.Thread(target=worker, daemon=True).start()
+
+    def do_update(self, *_) -> None:
+        """Stop, swap the staged code in, and relaunch."""
+        self.stop()
+        applied = apply_pending()
+        self.icon.notify(f"Updated to {applied}. Restarting…" if applied
+                         else "Nothing staged to apply.", "Whoop bridge")
+        if applied:
+            self.icon.stop()
+            os.execv(sys.executable, [sys.executable, "-m", "tray.whoop_tray", *sys.argv[1:]])
 
     def _running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
@@ -183,8 +220,17 @@ class TrayApp:
         # Poll the bridge so the icon colour reflects what is actually happening.
         def poll() -> None:
             import time
+            last_check = 0.0
             while True:
                 time.sleep(5)
+                if (self.cfg.auto_update and self.cfg.forward_url
+                        and time.monotonic() - last_check > self.cfg.update_check_interval):
+                    last_check = time.monotonic()
+                    try:
+                        self.updater.check()
+                        self.icon.update_menu()
+                    except Exception:
+                        log.debug("update check failed", exc_info=True)
                 if self._running() and self.bridge:
                     connected = self.bridge.is_connected
                     queued = self.spool.depth()
@@ -200,6 +246,12 @@ class TrayApp:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    # A staged update is applied before the tray starts, so the code that runs
+    # is the code that was downloaded.
+    if not os.environ.get("WHOOP_SKIP_UPDATE"):
+        if apply_pending():
+            os.environ["WHOOP_SKIP_UPDATE"] = "1"
+            os.execv(sys.executable, [sys.executable, "-m", "tray.whoop_tray", *sys.argv[1:]])
     TrayApp(sys.argv[1] if len(sys.argv) > 1 else "config.toml").run()
 
 

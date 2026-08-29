@@ -138,6 +138,39 @@ To start the tray at logon, put a shortcut to that last command in
 **Un-pair the strap from the WHOOP phone app first.** It bonds to one host at a
 time and the laptop will not see it otherwise.
 
+## Updating the laptop, from the server
+
+Once the bridge is installed you should not have to touch the laptop again.
+
+**Code.** The bridge asks `/api/bridge/release` hourly for the version this
+server is serving. If the digest differs it downloads `/api/bridge/bundle.zip`,
+checks the SHA-256 against what the server declared, and stages it. The staged
+copy is applied **at the next start**, never mid-run, so an update can never
+interrupt a sync or pull code out from under a live Bluetooth session. The tray
+shows "Restart to update to X"; `whoop-bridge update` does the same from a
+terminal.
+
+So the update flow is: `git pull && docker compose up -d --build` on the
+server. The laptops follow on their own.
+
+**Settings.** Any `BRIDGE_*` variable in `.env` is served at
+`/api/bridge/config` and applied by the bridge at startup and on each check.
+That covers log level, sync intervals, batch size and the IMU toggle — enough
+to retune a laptop without opening it.
+
+Two things are deliberately never pushed: the strap's **Bluetooth address**,
+which only the laptop can discover, and **any credential**. A server that is
+compromised or misconfigured can change how the bridge behaves; it cannot
+change where data is sent or what it authenticates as.
+
+The update archive is treated as untrusted input. Every entry is checked before
+anything is written: absolute paths, `..` traversal, and any path outside
+`whoop_bridge/`, `tray/`, `windows/` and the two manifests are rejected, and
+the rejection happens before extraction so a mixed archive applies nothing at
+all.
+
+Opt out with `auto_update = false` in `config.toml`.
+
 ## Device status
 
 The bridge posts a heartbeat to `/status` every 30 seconds (same token as

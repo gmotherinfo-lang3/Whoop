@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from .advice import suggest
 from .analytics import summarise_day
+from .bridge import cached_zip, pushed_config, release
 from .bundle import build_zip, bundle_status, download_allowed, public_base_url
 from .device import describe
 from .db import Database
@@ -403,6 +404,37 @@ def api_advice(date: str | None = None,
     today = _summarise(day)
     history = [_summarise(day - timedelta(days=i)) for i in range(1, baseline_days + 1)]
     return {"date": day.strftime("%Y-%m-%d"), **suggest(today, history)}
+
+
+# --- bridge update channel --------------------------------------------------
+# These use the ingest token rather than the Cloudflare Access check that
+# guards /setup: the bridge is not a browser and cannot complete an Access
+# login, and the token is exactly the "this is my bridge" credential.
+@app.get("/api/bridge/release")
+def api_bridge_release(_: None = Depends(require_token)) -> dict[str, Any]:
+    if not bundle_status()["ready"]:
+        raise HTTPException(503, "this image has no bridge code to serve")
+    return release()
+
+
+@app.get("/api/bridge/bundle.zip")
+def api_bridge_bundle(_: None = Depends(require_token)) -> Response:
+    if not bundle_status()["ready"]:
+        raise HTTPException(503, "this image has no bridge code to serve")
+    info = release()
+    return Response(
+        content=cached_zip(), media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="whoop-bridge.zip"',
+                 "X-Bridge-Version": info["version"],
+                 "X-Bridge-Sha256": info["sha256"],
+                 "Cache-Control": "no-store"})
+
+
+@app.get("/api/bridge/config")
+def api_bridge_config(_: None = Depends(require_token)) -> dict[str, Any]:
+    """Settings the server dictates. Never credentials, never the strap address."""
+    return {"config": pushed_config(), "release": release() if
+            bundle_status()["ready"] else None}
 
 
 # --- laptop setup bundle ----------------------------------------------------

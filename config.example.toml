@@ -45,6 +45,12 @@ forward_interval = 5.0
 # How often to tell the server the bridge and strap are alive. This is what
 # drives the connection dot and battery readout in the dashboard.
 heartbeat_interval = 30.0
+
+# Check the server for a newer bridge, and for settings it wants to push.
+# Updates are downloaded and verified, then applied the next time the bridge
+# starts -- never mid-sync. Set auto_update = false to opt out entirely.
+auto_update = true
+update_check_interval = 3600.0
 verify_tls = true
 
 [storage]

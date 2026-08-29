@@ -120,6 +120,11 @@ cd Whoop
 powershell -ExecutionPolicy Bypass -File windows\setup.ps1
 ```
 
+The bridge keeps itself current after that: it checks the server hourly,
+verifies what it downloads, and applies it at the next restart. Updating every
+laptop is `docker compose up -d --build` on the server. See
+[DEPLOY.md](DEPLOY.md#updating-the-laptop-from-the-server).
+
 Or, once the server is running, skip the clone entirely: open
 `https://your-server/setup` on the laptop and download a zip of the bridge
 already configured to talk to it.

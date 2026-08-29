@@ -19,6 +19,18 @@ services:
       # Cloudflare Access has authenticated, or to a direct LAN client.
       # "off" disables it. "open" removes the check - do not use on the internet.
       SETUP_DOWNLOAD: ${SETUP_DOWNLOAD:-on}
+      # Settings pushed to the laptop bridge. Behaviour only - never the strap
+      # address and never a credential.
+      BRIDGE_LOG_LEVEL: ${BRIDGE_LOG_LEVEL:-}
+      BRIDGE_BACKFILL_INTERVAL: ${BRIDGE_BACKFILL_INTERVAL:-}
+      BRIDGE_HEARTBEAT_INTERVAL: ${BRIDGE_HEARTBEAT_INTERVAL:-}
+      BRIDGE_FORWARD_INTERVAL: ${BRIDGE_FORWARD_INTERVAL:-}
+      BRIDGE_UPDATE_CHECK_INTERVAL: ${BRIDGE_UPDATE_CHECK_INTERVAL:-}
+      BRIDGE_INCLUDE_IMU: ${BRIDGE_INCLUDE_IMU:-}
+      BRIDGE_LIVE_HR: ${BRIDGE_LIVE_HR:-}
+      BRIDGE_BACKFILL: ${BRIDGE_BACKFILL:-}
+      BRIDGE_ACK_AND_TRIM: ${BRIDGE_ACK_AND_TRIM:-}
+      BRIDGE_BATCH_SIZE: ${BRIDGE_BATCH_SIZE:-}
     volumes:
       - whoop-data:/data
     # Published on localhost only. Everything from outside arrives through the

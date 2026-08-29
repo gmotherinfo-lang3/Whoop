@@ -122,6 +122,13 @@ batch_size = 50
 forward_interval = 5.0
 verify_tls = true
 
+# Keep this bridge current from the server. Updates are verified against the
+# digest the server declares and applied at the next start, never mid-sync.
+# The server can also push behaviour settings (intervals, log level) -- but
+# never this file's address or tokens.
+auto_update = true
+update_check_interval = 3600.0
+
 [storage]
 spool_path = "whoop-spool.db"
 spool_max_rows = 500000

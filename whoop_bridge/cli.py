@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import signal
 import sys
 
@@ -14,6 +15,7 @@ from .config import Config
 from .connection import WhoopBridge, scan
 from .forwarder import Forwarder
 from .heartbeat import Heartbeat
+from .updater import Updater, apply_pending, relaunch
 from .spool import Spool
 
 
@@ -53,9 +55,35 @@ def scan_cmd(timeout: float) -> None:
 @click.option("--dry-run", is_flag=True, help="Collect and spool, but do not forward anywhere.")
 def run_cmd(config_path: str, dry_run: bool) -> None:
     """Run the bridge: connect, sync, and forward."""
+    # Apply a staged update before anything is imported for real work, then
+    # re-exec so the new code is what actually runs.
+    if not os.environ.get("WHOOP_SKIP_UPDATE"):
+        applied = apply_pending()
+        if applied:
+            click.echo(f"applied update {applied}, restarting")
+            os.environ["WHOOP_SKIP_UPDATE"] = "1"
+            relaunch()
+
     cfg = Config.load(config_path)
     _setup_logging(cfg.log_level, cfg.log_file)
     log = logging.getLogger("whoop")
+
+    updater = Updater(cfg, interval=cfg.update_check_interval)
+    if cfg.auto_update and cfg.forward_url:
+        # One synchronous check at startup: settings the server pushes should
+        # apply to this run, not the next one.
+        try:
+            import httpx
+            base = cfg.forward_url.rsplit("/ingest", 1)[0].rstrip("/")
+            resp = httpx.get(f"{base}/api/bridge/config", headers=updater._headers(),
+                             timeout=15.0, verify=cfg.verify_tls)
+            if resp.status_code == 200:
+                changed = updater.apply_pushed_config(resp.json().get("config") or {})
+                if changed:
+                    log.info("applied settings from server: %s", ", ".join(changed))
+                    _setup_logging(cfg.log_level, cfg.log_file)
+        except Exception as exc:  # noqa: BLE001 - never block startup on this
+            log.debug("could not fetch server settings: %s", exc)
 
     problems = [p for p in cfg.validate() if not (dry_run and "forward_url" in p)]
     if problems:
@@ -108,6 +136,8 @@ def run_cmd(config_path: str, dry_run: bool) -> None:
             tasks.append(asyncio.create_task(forwarder.run()))
         if heartbeat:
             tasks.append(asyncio.create_task(heartbeat.run()))
+        if cfg.auto_update and cfg.forward_url:
+            tasks.append(asyncio.create_task(_update_loop(updater, bridge)))
         await asyncio.gather(*tasks)
 
     try:
@@ -117,6 +147,39 @@ def run_cmd(config_path: str, dry_run: bool) -> None:
     finally:
         log.info("stats: %s | %d record(s) still queued", bridge.stats, spool.depth())
         spool.close()
+
+
+async def _update_loop(updater, bridge) -> None:
+    """Check for updates on a slow timer. Staged only -- applied at next start."""
+    log = logging.getLogger("whoop.update")
+    while not bridge._stop.is_set():
+        await asyncio.to_thread(updater.check)
+        if updater.status.get("pending"):
+            log.info("update %s ready; it applies when the bridge next starts",
+                     updater.status["pending"])
+        try:
+            await asyncio.wait_for(bridge._stop.wait(), timeout=updater.interval)
+        except asyncio.TimeoutError:
+            pass
+
+
+@main.command("update")
+@click.option("--config", "-c", "config_path", default="config.toml")
+@click.option("--apply", "do_apply", is_flag=True, help="Apply a staged update now.")
+def update_cmd(config_path: str, do_apply: bool) -> None:
+    """Check the server for a newer bridge, or apply one already staged."""
+    cfg = Config.load(config_path)
+    _setup_logging(cfg.log_level)
+    if do_apply:
+        applied = apply_pending()
+        click.echo(f"applied {applied}" if applied else "nothing staged")
+        return
+    status = Updater(cfg).check()
+    click.echo(f"installed: {status['installed']}")
+    click.echo(f"server:    {status['available'] or '(unknown)'}")
+    click.echo(f"state:     {status['state']}")
+    if status.get("pending"):
+        click.echo("\nRestart the bridge to apply it.")
 
 
 @main.command("status")
