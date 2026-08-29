@@ -61,11 +61,11 @@ h1{font-size:17px;margin:0;letter-spacing:-.01em;font-weight:650}
 .hdr-r{display:flex;align-items:center;gap:10px}
 .sub{color:var(--muted);font-size:11.5px}
 button.icon{background:transparent;border:1px solid var(--line);color:var(--ink2);
-  width:32px;height:32px;border-radius:50%;cursor:pointer;
+  width:29px;height:29px;border-radius:50%;cursor:pointer;
   display:grid;place-items:center;padding:0;flex:0 0 auto}
 
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-  padding:18px;margin-bottom:12px}
+  padding:15px;margin-bottom:10px}
 /* Light scale-down on press, per the spec's micro-feedback rule. */
 button,.chip,.arow.head,.dev{-webkit-tap-highlight-color:transparent}
 button:active,.chip:active,.arow.head:active,.dev:active{transform:scale(.98)}
@@ -73,12 +73,12 @@ button,.chip,.arow.head,.dev{transition:transform .12s var(--ease),
   background var(--dur) var(--ease),border-color var(--dur) var(--ease),
   color var(--dur) var(--ease)}
 h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);
-  margin:0 0 14px;font-weight:600}
+  margin:0 0 11px;font-weight:600}
 
 /* ---- skeleton loader (pulsing lines, not a spinner) ---- */
 @keyframes shimmer{0%,100%{opacity:.30}50%{opacity:.68}}
 .sk{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-  padding:18px;margin-bottom:12px}
+  padding:15px;margin-bottom:10px}
 .sk i{display:block;background:var(--track);border-radius:7px;
   animation:shimmer 1.5s var(--ease) infinite}
 .sk .arc{width:132px;height:132px;border-radius:50%;margin:6px auto 16px;
@@ -86,16 +86,16 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .sk-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
 /* ---- device chip ---- */
-.dev{display:flex;align-items:center;gap:7px;background:var(--card);
-  border:1px solid var(--line);border-radius:999px;padding:5px 9px 5px 11px;
-  cursor:pointer;font-size:12px;color:var(--ink2);transition:border-color .25s}
+.dev{display:flex;align-items:center;gap:6px;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:4px 8px 4px 10px;
+  cursor:pointer;font-size:11px;color:var(--ink2);transition:border-color .25s}
 .dev .pct{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);
-  display:inline-flex;align-items:center;gap:2px}
+  display:inline-flex;align-items:center;gap:2px;font-size:11.5px;letter-spacing:.2px}
 .dev .pct svg{color:var(--good)}
 .dev .pct.dim{color:var(--muted);font-weight:400}
 .dev .strap{display:grid;place-items:center;opacity:.8}
 .dev{position:relative}
-.dev .led{position:absolute;top:3px;right:6px;width:8px;height:8px;border-radius:50%;
+.dev .led{position:absolute;top:2px;right:5px;width:7px;height:7px;border-radius:50%;
   background:var(--muted);box-shadow:0 0 0 2px var(--card);transition:background .3s,box-shadow .3s}
 .dev.good .led{background:var(--good);
   box-shadow:0 0 0 2px var(--card),0 0 7px 1px color-mix(in srgb,var(--good) 75%,transparent);
@@ -125,9 +125,10 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .stagger>*:nth-child(3){animation-delay:.12s} .stagger>*:nth-child(4){animation-delay:.17s}
 .stagger>*:nth-child(5){animation-delay:.22s} .stagger>*:nth-child(6){animation-delay:.27s}
 .stagger>*:nth-child(n+7){animation-delay:.31s}
-.ringarc{transition:stroke-dashoffset .95s cubic-bezier(.22,1,.36,1);
-  /* A tight bloom reads as neon; a wide one just reads as out of focus. */
-  filter:drop-shadow(0 0 2.5px currentColor)}
+/* Crisp arc, with a blurred copy of itself behind it. Glow without softening
+   the edge the eye actually reads the value from. */
+.ringarc{transition:stroke-dashoffset .95s cubic-bezier(.22,1,.36,1)}
+.ringarc.halo{filter:blur(6px)}
 .chip-press{transition:transform .12s ease,background .15s ease,border-color .15s ease}
 .chip-press:active{transform:scale(.95)}
 @media (prefers-reduced-motion:reduce){
@@ -140,15 +141,19 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   padding:2px 14px 10px;transition:padding .3s cubic-bezier(.4,0,.2,1),
   box-shadow .3s,border-color .3s;border-bottom:1px solid transparent}
 .ringbar.compact{padding-top:8px;padding-bottom:6px;border-bottom-color:var(--line)}
-.datenav{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px;
+.datenav{display:flex;align-items:center;justify-content:center;margin-bottom:10px;
   transition:opacity .25s,max-height .3s,margin .3s;overflow:hidden;max-height:44px}
+.datecap{display:inline-flex;align-items:center;border-radius:999px;
+  background:color-mix(in srgb,var(--raised) 55%,transparent);
+  -webkit-backdrop-filter:blur(16px) saturate(160%);
+  backdrop-filter:blur(16px) saturate(160%);
+  border:1px solid var(--line-strong);padding:2px}
 .ringbar.compact .datenav{opacity:0;max-height:0;margin-bottom:0;pointer-events:none}
 .datenav button{background:transparent;border:none;color:var(--muted);cursor:pointer;
   font:inherit;padding:5px 10px;border-radius:var(--r-sm);display:grid;place-items:center}
 .datenav button:disabled{opacity:.28;cursor:default}
-.datenav .lbl{background:var(--card);border:1px solid var(--line);border-radius:999px;
-  padding:7px 20px;font-size:12px;font-weight:650;letter-spacing:.09em;
-  text-transform:uppercase;min-width:126px;text-align:center}
+.datenav .lbl{padding:6px 6px;font-size:11.5px;font-weight:650;letter-spacing:1.2px;
+  text-transform:uppercase;min-width:118px;text-align:center}
 .rings{display:grid;grid-template-columns:repeat(3,1fr);align-items:start;
   padding-top:6px}
 .ringcell{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
@@ -157,9 +162,10 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   transition:transform .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1)}
 /* Scale AND shrink the box, so the collapsed bar really is 38px tall. */
 .ringbar.compact .ringcell .rg{transform:scale(.37);height:38px}
-.ringcell .rgv{position:absolute;font-size:31px;font-weight:700;letter-spacing:-.035em;
-  transition:opacity .22s}
-.ringcell .rgv small{font-size:14px;color:var(--muted);font-weight:600}
+.ringcell .rgv{position:absolute;font-size:26px;font-weight:600;letter-spacing:-.03em;
+  transition:opacity .22s;display:flex;align-items:baseline;gap:1px}
+.ringcell .rgv small{font-size:11px;color:var(--muted);font-weight:500;
+  letter-spacing:.02em}
 .ringbar.compact .ringcell .rgv{opacity:0}
 .ringcell .cap{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;
   color:var(--muted);font-weight:600;transition:color var(--dur) var(--ease)}
@@ -167,10 +173,9 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .ringbar.compact .ringcell .cap{color:var(--ink2)}
 
 /* ---- health monitor strip ---- */
-.hm{display:grid;grid-template-columns:repeat(5,1fr)}
-.hm .c{text-align:center;padding:2px 3px;position:relative}
-.hm .c+.c::before{content:"";position:absolute;left:0;top:14%;bottom:14%;
-  width:1px;background:var(--line)}
+.hm{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.hm .c{text-align:center;padding:9px 3px 8px;border-radius:var(--r-sm);
+  background:color-mix(in srgb,var(--ink) 4%,transparent)}
 .hm .c svg{opacity:.65;margin-bottom:5px}
 .hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
 .hm .c .v{font-size:18px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;
@@ -251,7 +256,7 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .meter .note{font-size:11px;color:var(--muted);margin-top:3px}
 
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px}
 .stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
 .stat .val{font-size:38px;font-weight:700;margin-top:6px;letter-spacing:-.035em;
   line-height:1.05}
@@ -261,14 +266,16 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 
 /* ---- suggestions ---- */
 .sug{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--muted);
-  border-radius:var(--r);padding:15px 17px;margin-bottom:10px}
+  border-radius:var(--r);padding:13px 15px;margin-bottom:10px}
 .sug.warning{background:linear-gradient(90deg,
   color-mix(in srgb,var(--crit) 7%,var(--card)),var(--card) 42%)}
 .sug.warning{border-left-color:var(--crit)}
 .sug.notice{border-left-color:var(--warn)}
 .sug.info{border-left-color:var(--good)}
-.sug .top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.sug .ic{display:grid;place-items:center;flex:0 0 auto}
+.sug .top{display:flex;align-items:flex-start;gap:8px;margin-bottom:5px}
+/* Pinned to the first line of a wrapping headline rather than centred on the
+   whole block, where it drifts into the gap between lines. */
+.sug .ic{display:grid;place-items:center;flex:0 0 auto;height:21px}
 .sug.warning .ic{color:var(--crit)} .sug.notice .ic{color:var(--warn)}
 .sug.info .ic{color:var(--good)}
 .sug h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
@@ -391,7 +398,7 @@ nav button:active{transform:scale(.96)}
     <div class="hdr-r">
       <button class="dev" id="dev" aria-label="Device status" aria-expanded="false">
         <span class="pct dim" id="devpct">--%</span>
-        <span class="strap" data-ic="strap" data-size="19"></span>
+        <span class="strap" data-ic="strap" data-size="16"></span>
         <span class="led" id="devled"></span>
       </button>
       <button class="icon" id="theme" title="Switch theme" aria-label="Switch theme" data-ic="theme"></button>
@@ -602,13 +609,16 @@ function ringSVG(value, max, color, size, stroke){
   const r=(size-stroke)/2, C=2*Math.PI*r;
   const pct = value===null||value===undefined ? 0 : Math.max(0,Math.min(1,value/max));
   // Starts empty and animates to the value once inserted (see drawRings).
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+  const arc = (cls, extra) => `<circle class="ringarc${cls}" cx="${size/2}" cy="${size/2}"
+      r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
+      stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"
+      data-to="${C*(1-pct)}" transform="rotate(-90 ${size/2} ${size/2})" ${extra}/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"
+       aria-hidden="true" overflow="visible">
     <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
-      stroke="${css('--track')}" stroke-width="${stroke}"/>
-    <circle class="ringarc" cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
-      stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
-      stroke-dasharray="${C}" stroke-dashoffset="${C}" data-to="${C*(1-pct)}"
-      transform="rotate(-90 ${size/2} ${size/2})"/>
+      stroke="${css('--track')}" stroke-width="${stroke}" stroke-linecap="round"/>
+    ${arc(" halo", 'opacity="0.55"')}
+    ${arc("", "")}
   </svg>`;
 }
 
@@ -765,9 +775,11 @@ function ringBar(t, band){
       <div class="cap">${cap}</div></div>`;
   return `<div class="ringbar" id="ringbar">
     <div class="datenav">
-      <button id="dprev" aria-label="Previous day">${icon("chevron_left",19)}</button>
-      <span class="lbl">${dateLabel()}</span>
-      <button id="dnext" aria-label="Next day" ${state.date>=today()?"disabled":""}>${icon("chevron_right",19)}</button>
+      <div class="datecap">
+        <button id="dprev" aria-label="Previous day">${icon("chevron_left",18)}</button>
+        <span class="lbl">${dateLabel()}</span>
+        <button id="dnext" aria-label="Next day" ${state.date>=today()?"disabled":""}>${icon("chevron_right",18)}</button>
+      </div>
     </div>
     <div class="rings">
       ${cell("Sleep",
@@ -777,7 +789,7 @@ function ringBar(t, band){
         t.recovery.score!=null?`${t.recovery.score}<small>%</small>`:"–",
         ringSVG(t.recovery.score,100,bandColor,96,8))}
       ${cell("Strain",
-        t.strain.score!=null?`${fmt(t.strain.score,1)}`:"–",
+        t.strain.score!=null?`${fmt(t.strain.score,1)}<small>/21</small>`:"–",
         ringSVG(t.strain.score,21,css("--strain"),96,8))}
     </div>
   </div>`;
@@ -804,7 +816,7 @@ async function renderToday(el, stale){
   const ICON = {warning:"warning", notice:"notice", info:"info"};
   const sug = (advice.ready && advice.suggestions.length)
     ? advice.suggestions.map(x=>`<div class="sug ${x.severity}">
-        <div class="top"><span class="ic">${icon(ICON[x.severity]||"notice",17)}</span><h3>${esc(x.headline)}</h3></div>
+        <div class="top"><span class="ic">${icon(ICON[x.severity]||"notice",16)}</span><h3>${esc(x.headline)}</h3></div>
         <p>${esc(x.detail)}</p>
         <details class="more"><summary>confidence: ${x.confidence}</summary>
           ${x.more?`<p>${esc(x.more)}</p>`:""}
