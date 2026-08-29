@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d0d0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Strap</title>
+<!-- Inline so the page never fires a 404 for a file that does not exist. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M5 19h4.2l2.1-6 3.4 10 3.3-13 2.6 9h6.4' fill='none' stroke='%2300FF87' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
 /* Dark is the default look. Light is available via the toggle, and both
    palettes are defined explicitly so nothing inherits from the host. */
@@ -184,6 +188,39 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   letter-spacing:-.02em}
 .hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
 .hm .c .v.none{color:var(--muted);font-weight:400}
+
+/* ---- detail views ---- */
+.dhead{display:flex;align-items:center;gap:10px;margin:2px 0 14px}
+.dhead button{background:transparent;border:none;color:var(--ink2);cursor:pointer;
+  padding:6px;display:grid;place-items:center;border-radius:var(--r-sm)}
+.dhead .t{flex:1 1 auto;text-align:center;font-size:11px;font-weight:650;
+  letter-spacing:1.5px;text-transform:uppercase;color:var(--ink2)}
+.dhead .sp{width:32px}
+.gauge{position:relative;display:grid;place-items:center;margin:4px auto 0}
+.gauge .rd{position:absolute;text-align:center;top:52%;transform:translateY(-50%)}
+.gauge .rd .n{font-size:46px;font-weight:700;letter-spacing:-.04em;line-height:1}
+.gauge .rd .b{font-size:12px;font-weight:650;letter-spacing:1.5px;
+  text-transform:uppercase;margin-top:4px}
+.gauge .rd .s{font-size:10.5px;color:var(--muted);margin-top:5px}
+.gends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);
+  margin-top:-6px;padding:0 6px}
+.hmgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.hmc{background:color-mix(in srgb,var(--ink) 4%,transparent);border-radius:var(--r-sm);
+  padding:12px}
+.hmc .k{display:flex;align-items:center;gap:6px;font-size:9.5px;text-transform:uppercase;
+  letter-spacing:1.2px;color:var(--muted)}
+.hmc .v{font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:6px;
+  font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:4px}
+.hmc .v span{font-size:12px;font-weight:500;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:4px;margin-top:8px;font-size:10px;
+  padding:3px 8px;border-radius:999px;font-weight:600;letter-spacing:.2px}
+.badge.ok{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+.badge.out{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.badge.na{color:var(--muted);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.zonebar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:12px;gap:2px}
+.zonebar i{display:block}
+.tappable{cursor:pointer}
+.tappable .go{color:var(--muted);display:grid;place-items:center}
 
 /* ---- body tab ---- */
 .bigstat{font-size:44px;font-weight:700;letter-spacing:-.04em;line-height:1.05;
@@ -815,7 +852,7 @@ async function renderToday(el, stale, quiet){
     el.innerHTML = (t?ringBar({sleep:{},recovery:{},strain:{}},null):"") +
       `<div class="card"><div class="empty">No data for ${esc(dateLabel().toLowerCase())}.<br><br>
       Once the laptop bridge forwards a sync, everything appears here.</div></div>`;
-    wireRingBar(); drawRings(el, quiet);
+    wireRingBar(); drawRings(el, quiet); wireOpeners(el);
     return;
   }
 
@@ -847,7 +884,9 @@ async function renderToday(el, stale, quiet){
 
     ${sug}
 
-    <div class="card"><h2>Health monitor</h2>
+    <div class="card tappable" data-open="health"><h2 style="display:flex;
+      align-items:center;justify-content:space-between">Health monitor
+      <span class="go">${icon("chevron_right",15)}</span></h2>
       <div class="hm">
         ${hmCell("resp","Resp",sen.resp_rate_raw,sb.resp_rate_raw,"",false,true)}
         ${hmCell("spo2","SpO₂",sen.spo2_red,sb.spo2_red,"",true,true)}
@@ -855,12 +894,19 @@ async function renderToday(el, stale, quiet){
         ${hmCell("hrv","HRV",t.hrv.rmssd_ms,t.baselines.hrv_rmssd_ms,"ms",true,false)}
         ${hmCell("temp","Temp",sen.skin_temp_raw,sb.skin_temp_raw,"",false,true)}
       </div>
+      <div class="muted" style="margin-top:10px" id="hmsum"></div>
       <details class="more"><summary>why some of these have no units</summary>
         <p>RHR and HRV are real measurements. Resp, SpO₂ and Temp come off the strap
         as raw sensor counts — WHOOP converts those to % and °C in their cloud, which
         this cannot do. The percentage under each is the honest part: how far today
         sits from your own ${t.baselines.window_days}-day baseline. Measured over
         ${esc((sen.measured_over||"the day").replace("_"," "))}.</p></details>
+    </div>
+
+    <div class="card tappable" data-open="stress"><h2 style="display:flex;
+      align-items:center;justify-content:space-between">Stress monitor
+      <span class="go">${icon("chevron_right",15)}</span></h2>
+      <div id="stresscard" class="muted">Loading…</div>
     </div>
 
     <div class="stats">
@@ -909,7 +955,32 @@ async function renderToday(el, stale, quiet){
   wireRingBar();
   drawRings(el, quiet);
   wireCharts(el);
+  wireOpeners(el);
   say("#stats", statsLine(data.stats));
+
+  // Both summaries are secondary: fetched after the page is usable, and a
+  // failure leaves a note rather than breaking Today.
+  api(`/api/health-monitor?date=${state.date}`).then(h => {
+    const n = $("#hmsum"); if(!n || !h.summary) return;
+    n.innerHTML = h.summary.ready
+      ? `<span style="color:${h.summary.ok?css("--good"):css("--warn")}">${
+          esc(h.summary.headline)}</span> · ${esc(h.summary.detail)}`
+      : esc(h.summary.detail);
+  }).catch(()=>say("#hmsum",""));
+
+  api(`/api/stress?date=${state.date}`).then(st => {
+    const n = $("#stresscard"); if(!n) return;
+    if(!st.usable){ n.textContent = st.reason || "Not enough data yet."; return; }
+    const col = {low:css("--good"),medium:css("--warn"),high:css("--crit")}[st.band];
+    n.innerHTML = `<div style="display:flex;align-items:baseline;gap:9px">
+      <span style="font-size:30px;font-weight:700;letter-spacing:-.03em;color:${col}">
+        ${st.current.toFixed(1)}</span>
+      <span style="font-weight:650;letter-spacing:1.2px;text-transform:uppercase;
+        font-size:11px;color:${col}">${esc(st.band)}</span></div>
+    <div class="zonebar">${[["low",css("--good")],["medium",css("--warn")],["high",css("--crit")]]
+      .map(([k,c])=>st.share[k]?`<i style="width:${st.share[k]}%;background:${c}"></i>`:"").join("")}</div>
+    <div style="margin-top:8px">${esc(st.note)}</div>`;
+  }).catch(()=>{ const n=$("#stresscard"); if(n) n.textContent="Unavailable right now."; });
 }
 
 function dayRow(d){
@@ -1195,6 +1266,163 @@ function actRow(a){
   </div>`;
 }
 
+// ---------- detail views ----------
+// A 0-3 arc, 240 degrees, with the band colours along the track.
+function arcGauge(value, max, size){
+  const R = size/2 - 16, C = size/2, SW = 12;
+  const START = 150, SWEEP = 240;
+  const pt = (deg, r) => [C + r*Math.cos(deg*Math.PI/180), C + r*Math.sin(deg*Math.PI/180)];
+  const seg = (a0, a1, colour, w, op) => {
+    const [x0,y0] = pt(a0, R), [x1,y1] = pt(a1, R);
+    return `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${R} ${R} 0 ${
+      (a1-a0)>180?1:0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none"
+      stroke="${colour}" stroke-width="${w}" stroke-linecap="round"
+      opacity="${op}"/>`;
+  };
+  const frac = Math.max(0, Math.min(1, (value ?? 0)/max));
+  const needle = START + SWEEP*frac;
+  const thirds = [[0,1/3,css("--good")],[1/3,2/3,css("--warn")],[2/3,1,css("--crit")]];
+  const [nx,ny] = pt(needle, R);
+  return `<svg width="${size}" height="${size*0.72}" viewBox="0 0 ${size} ${size*0.72}"
+       aria-hidden="true" overflow="visible">
+    ${thirds.map(([a,b,col]) =>
+      seg(START + SWEEP*a + (a>0?1.5:0), START + SWEEP*b - (b<1?1.5:0), col, SW, .28)).join("")}
+    ${seg(START, needle, css("--ink"), 3, 0)}
+    ${thirds.map(([a,b,col]) => {
+      const s0 = Math.max(a, 0), s1 = Math.min(b, frac);
+      return s1 > s0 ? seg(START + SWEEP*s0, START + SWEEP*s1, col, SW, 1) : "";
+    }).join("")}
+    <circle cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="7" fill="${css('--ink')}"
+      stroke="${css('--card')}" stroke-width="3"/>
+  </svg>`;
+}
+
+function detailHeader(title){
+  return `<div class="dhead">
+    <button id="dback" aria-label="Back">${icon("chevron_left",20)}</button>
+    <div class="t">${esc(title)}</div><div class="sp"></div></div>`;
+}
+
+function rangeBadge(c){
+  if(c.in_range === null)
+    return `<span class="badge na">${esc(c.state)}</span>`;
+  const unit = c.unit ? " " + c.unit : "";
+  return `<span class="badge ${c.in_range?"ok":"out"}">${
+    c.in_range ? icon("check",11) : icon("warning",11)
+  } ${c.in_range?"within":"outside"} ${c.low}–${c.high}${unit}</span>`;
+}
+
+async function renderHealthDetail(el, stale, quiet){
+  const d = await api(`/api/health-monitor?date=${state.date}`);
+  if(stale()) return;
+  const hr = d.heart_rate;
+  const ICONS = {"Resting HR":"rhr","HRV":"hrv","Respiratory rate":"lungs",
+                 "Blood oxygen":"droplet","Skin temperature":"thermometer"};
+  el.innerHTML = detailHeader("Health monitor") + `<div class="stagger">
+    <div class="card">
+      <div class="hmc .k" style="background:none;padding:0">
+        <div class="k" style="color:var(--crit)">${icon("rhr",15)} Heart rate</div>
+        <div class="v" style="font-size:38px">${hr.latest ?? "–"}<span>bpm${
+          hr.zone!=null?` · zone ${hr.zone}`:""}</span></div>
+      </div>
+      ${hr.points.length>2 ? lineChart(
+        hr.points.map(p=>({t:new Date(p.t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}), v:p.v})),
+        {color:css("--crit"), unit:" bpm", label:"Heart rate", h:120})
+        : `<div class="empty">No heart rate yet today.</div>`}
+      <div class="muted">Low ${hr.min ?? "–"} · high ${hr.max ?? "–"} bpm today</div>
+    </div>
+    <div class="hmgrid">
+      ${d.channels.map(c=>`<div class="hmc">
+        <div class="k">${icon(ICONS[c.label]||"activity",14)} ${esc(c.label)}</div>
+        <div class="v">${c.value ?? "–"}${c.unit?`<span>${esc(c.unit)}</span>`:""}</div>
+        ${rangeBadge(c)}
+        ${c.delta_pct!=null?`<div class="bl-s">${c.delta_pct>0?"+":""}${c.delta_pct}% vs your median</div>`:""}
+      </div>`).join("")}
+    </div>
+    <div class="card"><h2>About these ranges</h2>
+      <div class="muted">${esc(d.note)}</div></div>
+  </div>`;
+  wireCharts(el);
+}
+
+async function renderStressDetail(el, stale, quiet){
+  const d = await api(`/api/stress?date=${state.date}`);
+  if(stale()) return;
+  if(!d.usable){
+    el.innerHTML = detailHeader("Stress monitor") +
+      `<div class="card"><div class="empty">${esc(d.reason||"Not enough data yet.")}</div></div>`;
+    return;
+  }
+  const colour = {low:css("--good"),medium:css("--warn"),high:css("--crit")}[d.band];
+  const zones = [["low",css("--good")],["medium",css("--warn")],["high",css("--crit")]];
+  el.innerHTML = detailHeader("Stress monitor") + `<div class="stagger">
+    <div class="card" style="text-align:center">
+      <div class="gauge">${arcGauge(d.current, d.scale_max, 240)}
+        <div class="rd"><div class="n" style="color:${colour}">${d.current.toFixed(1)}</div>
+          <div class="b" style="color:${colour}">${esc(d.band)}</div>
+          <div class="s">of ${d.scale_max.toFixed(1)} · your own scale</div></div></div>
+      <div class="gends"><span>0.0</span><span>${d.scale_max.toFixed(1)}</span></div>
+    </div>
+    <div class="card"><h2>Through the day</h2>
+      ${lineChart(d.points.map(p=>({t:new Date(p.t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}), v:p.v})),
+        {color:css("--strain"), unit:"", label:"Stress", h:130})}
+      <div class="zonebar">${zones.map(([k,col])=>
+        d.share[k]?`<i style="width:${d.share[k]}%;background:${col}"></i>`:"").join("")}</div>
+      <div class="legend">${zones.map(([k,col])=>`<span><i style="background:${col}"></i>${
+        k} ${d.share[k]}% · ${Math.floor(d.minutes[k]/60)}h ${d.minutes[k]%60}m</span>`).join("")}</div>
+      <div class="muted" style="margin-top:10px">${esc(d.note)}</div>
+    </div>
+    <div class="card"><h2>How this is derived</h2>
+      <div class="muted">${esc(d.method)}</div>
+      <div class="muted" style="margin-top:8px">Average ${d.average} · peak ${d.peak}
+        · scaled against ${d.baseline_days} days of your history.</div></div>
+  </div>`;
+  wireCharts(el);
+}
+
+async function renderAgeDetail(el, stale, quiet){
+  const d = await api("/api/fitness-age?days=60");
+  if(stale()) return;
+  const e = d.estimate, a = d.age, t = d.trend, vt = d.vo2max_trend;
+  // Fitness age stops moving once the estimate is pinned to the end of the
+  // reference table. VO2 max does not, so that becomes the trend on show.
+  const useVo2 = !!(t && !t.usable && t.clamped && vt && vt.usable);
+  el.innerHTML = detailHeader("Fitness age") + `<div class="stagger">
+    ${a ? `<div class="card" style="text-align:center">
+      <div class="bigstat" style="justify-content:center;color:${css('--good')}">
+        ${a.fitness_age}<span>fitness age</span></div>
+      ${a.delta_years!=null?`<div class="muted" style="margin-top:6px;font-size:13px">
+        ${Math.abs(a.delta_years)} years ${esc(a.verdict)} than your ${a.chronological_age}
+      </div>`:`<div class="muted" style="margin-top:6px">${esc(d.needs_age||"")}</div>`}
+      <div class="muted" style="margin-top:10px">Estimated VO₂ max ${e.vo2max} ml/kg/min
+        from a heart-rate ratio of ${e.ratio}</div>
+    </div>` : `<div class="card"><div class="empty">${esc(e.reason||"Not enough data yet.")}</div></div>`}
+
+    ${(t && t.usable) || useVo2 ? (() => {
+      const shown = useVo2 ? vt : t;
+      const rate = useVo2 ? `${vt.per_month>0?"+":""}${vt.per_month} ml/kg/min per month`
+                          : `${t.years_per_month>0?"+":""}${t.years_per_month} yr/month`;
+      return `<div class="card"><h2>Your own trend</h2>
+      ${useVo2?`<div class="muted" style="margin-bottom:10px">${esc(t.reason)}</div>`:""}
+      <div class="bl"><div class="bl-k">${useVo2?"VO₂ max direction":"Direction"}</div>
+        <div class="bl-v" style="color:${shown.direction==="improving"?css("--good"):
+          shown.direction==="declining"?css("--crit"):css("--muted")}">
+          ${esc(shown.direction)}<span>${rate}</span></div>
+        <div class="bl-s">${esc(shown.note)}</div></div>
+      ${d.history && d.history.length>2 ? lineChart(
+        d.history.map(h=>({t:h.days_ago+"d", v:useVo2?h.vo2max:h.fitness_age})),
+        {color:css("--good"), unit:useVo2?" ml/kg/min":" yrs",
+         label:useVo2?"VO₂ max":"Fitness age", h:110}) : ""}
+    </div>`; })() : `<div class="card"><h2>Your own trend</h2>
+      <div class="muted">${esc((t&&t.reason)||"Not enough history yet.")}</div></div>`}
+
+    <div class="card"><h2>What this is, and is not</h2>
+      ${d.limits.map(l=>`<div class="bl"><div class="bl-s" style="margin:0">${esc(l)}</div></div>`).join("")}
+    </div>
+  </div>`;
+  wireCharts(el);
+}
+
 // ---------- Body ----------
 function statLine(label, value, sub){
   return `<div class="bl"><div class="bl-k">${esc(label)}</div>
@@ -1203,6 +1431,12 @@ function statLine(label, value, sub){
 
 function notReady(reason){
   return `<div class="muted" style="padding:6px 0">${esc(reason || "Not enough data yet.")}</div>`;
+}
+
+function wireOpeners(root){
+  root.querySelectorAll("[data-open]").forEach(node => {
+    node.onclick = () => openDetail(node.dataset.open);
+  });
 }
 
 async function renderBody(el, stale, quiet){
@@ -1215,6 +1449,13 @@ async function renderBody(el, stale, quiet){
   const tgt = d.strain_target, eff = d.efficiency, deb = d.sleep_debt;
 
   el.innerHTML = `<div class="stagger">
+    <div class="card tappable" data-open="age"><h2 style="display:flex;
+      align-items:center;justify-content:space-between">Fitness age
+      <span class="go">${icon("chevron_right",15)}</span></h2>
+      <div class="muted">Estimated VO₂ max, the age its population median matches,
+      and whether your own is moving.</div>
+    </div>
+
     <div class="card"><h2>Autonomic balance</h2>
       ${dfa.usable ? `
         <div class="bigstat" style="color:${band[dfa.band]||css('--muted')}">
@@ -1330,6 +1571,7 @@ async function renderBody(el, stale, quiet){
         <p>${esc(eff.caveat||"")}</p></details>
     </div>
   </div>`;
+  wireOpeners(el);
 }
 
 // ---------- Insights ----------
@@ -1461,18 +1703,36 @@ async function renderLearning(el, stale, quiet){
 // ---------- shell ----------
 const TABS={today:renderToday, journal:renderJournal, activities:renderActivities,
             body:renderBody, insights:renderInsights, learning:renderLearning};
+// Detail views live on their own hash routes so they are linkable and the
+// browser back button behaves the way people expect.
+const DETAILS={health:renderHealthDetail, stress:renderStressDetail, age:renderAgeDetail};
+
+function openDetail(name){ location.hash = "#/" + name; }
+function closeDetail(){
+  if(history.length > 1) history.back(); else location.hash = "";
+}
+function currentDetail(){
+  const m = /^#\/(\w+)$/.exec(location.hash || "");
+  return m && DETAILS[m[1]] ? m[1] : null;
+}
 // A slow render must never overwrite a tab the user has since switched to.
 let renderToken = 0;
 async function render(opts){
   const quiet = !!(opts && opts.quiet);
-  const my = ++renderToken, tab = state.tab, el = $("#content");
+  const my = ++renderToken, el = $("#content");
+  const detail = currentDetail();
+  const tab = detail || state.tab;
   const stale = () => my !== renderToken;
   // A background refresh keeps the current content on screen and skips the
   // entrance animations; only a real navigation shows the skeleton.
   document.body.classList.toggle("quiet", quiet);
-  if(!quiet) el.innerHTML = SKELETONS[tab === "today" ? "today" : "list"];
+  if(!quiet) el.innerHTML = SKELETONS[(!detail && tab === "today") ? "today" : "list"];
   try{
-    await TABS[tab](el, stale, quiet);
+    await (detail ? DETAILS[detail] : TABS[tab])(el, stale, quiet);
+    if(!stale() && detail){
+      const back = $("#dback");
+      if(back) back.onclick = closeDetail;
+    }
     if(stale()) return;
     syncDevPanel();
     say("#updated","updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
@@ -1486,17 +1746,27 @@ async function render(opts){
 }
 $("#nav").onclick = e => {
   const b=e.target.closest("[data-tab]"); if(!b) return;
+  // Leaving a detail view: drop the hash without firing hashchange, so the
+  // tab below renders once rather than twice.
+  if(currentDetail())
+    history.replaceState(null, "", location.pathname + location.search);
   state.tab=b.dataset.tab;
   document.querySelectorAll("#nav button").forEach(x=>
     x.setAttribute("aria-selected", String(x===b)));
   render();
 };
+// The hash is the only thing that says which detail view is open, so every
+// way of changing it -- a tapped card, the back arrow, the browser's own back
+// and forward buttons, a pasted link -- has to come through here.
+addEventListener("hashchange", () => render());
 render();
 // Live data: refresh quietly and often enough to feel live, without the page
 // visibly rebuilding itself under the reader.
 setInterval(() => {
   if(document.hidden) return;               // no work while the tab is hidden
-  if(state.tab === "today" || state.tab === "body") render({quiet:true});
+  const d = currentDetail();
+  if(d === "health" || d === "stress" || (!d && (state.tab === "today" || state.tab === "body")))
+    render({quiet:true});
 }, 20000);
 document.addEventListener("visibilitychange", () => {
   if(!document.hidden) render({quiet:true});

@@ -14,6 +14,10 @@ services:
       BASELINE_DAYS: ${BASELINE_DAYS:-30}
       # Hours offset from UTC for day boundaries, e.g. -5 for US Eastern.
       TZ_OFFSET_HOURS: ${TZ_OFFSET_HOURS:-0}
+      # Optional. Only the Fitness age view uses these, to compare your
+      # estimated VO2 max against the population median. Unset is fine.
+      USER_AGE: ${USER_AGE:-}
+      USER_SEX: ${USER_SEX:-male}
       # Controls /setup, which hands out a pre-configured laptop bundle
       # containing INGEST_TOKEN. "on" (default) serves it only to a request
       # Cloudflare Access has authenticated, or to a direct LAN client.

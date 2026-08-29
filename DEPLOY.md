@@ -31,6 +31,11 @@ Fill in `.env`:
 - `MAX_HR` — **set this**. Strain is computed against it; the 190 default is
   the `220 − age` rule at age 30 and will skew your numbers if that is not you.
 - `TZ_OFFSET_HOURS` — so "days" break at your local midnight, not UTC.
+- `USER_AGE` and `USER_SEX` — optional, and used only by the Fitness age view,
+  to say how your estimated VO₂ max compares to the population median for your
+  age. Leave them unset and that view still shows VO₂ max and the age it
+  matches, just without the comparison. `USER_SEX` selects which reference
+  table is used (`male` or `female`) and nothing else.
 
 ```bash
 docker compose up -d --build

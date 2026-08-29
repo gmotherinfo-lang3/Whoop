@@ -15,6 +15,8 @@ import hmac
 import os
 import threading
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,10 @@ from .bundle import build_zip, bundle_status, download_allowed, public_base_url
 from .circadian import hr_trough, recovery_velocity
 from .device import describe
 from .efficiency import efficiency_index
+from .monitor import channel, summarise as summarise_channels
+from .norms import (estimate_vo2max, fitness_age, trend as fitness_trend,
+                    vo2max_trend)
+from .stress import raw_series, stress_day
 from .hrv_advanced import dfa_alpha1, sample_entropy
 from .substances import CAFFEINE_MG, ALCOHOL_UNITS, curve, overlay
 from .workload import acwr, payback_plan, sleep_debt, strain_target
@@ -47,10 +53,42 @@ MAX_HR = float(os.environ.get("MAX_HR", "190"))
 SLEEP_NEED_H = float(os.environ.get("SLEEP_NEED_HOURS", "8"))
 BASELINE_DAYS = int(os.environ.get("BASELINE_DAYS", "30"))
 TZ_OFFSET_H = float(os.environ.get("TZ_OFFSET_HOURS", "0"))
+USER_AGE = float(os.environ["USER_AGE"]) if os.environ.get("USER_AGE") else None
+USER_SEX = os.environ.get("USER_SEX", "").strip().lower() or "male"
+# The longest history any view asks for, and the stress scale's default
+# reference window. Both are warmed at startup.
+WARM_DAYS = 60
+STRESS_BASELINE_DAYS = 14
 
 from .segment import FEATURE_NAMES as _FEATURES
 
-app = FastAPI(title="Whoop Server", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Warm the day memo in the background before the first request lands.
+
+    Cold, one request has to summarise up to sixty days before it can answer,
+    and several arriving together each redo that same work. Doing it once on a
+    background thread means the first page load after a restart is warm. It is
+    best-effort: a failure here must never stop the server from starting.
+    """
+    def warm() -> None:
+        try:
+            today = datetime.now(timezone.utc)
+            for i in range(WARM_DAYS + 1):
+                _raw_summary(today - timedelta(days=i))
+            summary = _summarise(today)
+            hrv_base = (summary.get("baselines") or {}).get("hrv_rmssd_ms")
+            for i in range(1, STRESS_BASELINE_DAYS + 1):
+                _stress_reference_day(today - timedelta(days=i), hrv_base)
+        except Exception:
+            pass
+
+    threading.Thread(target=warm, name="cache-warmup", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Whoop Server", docs_url=None, redoc_url=None, lifespan=lifespan)
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 db = Database(DB_PATH)
 
@@ -155,9 +193,64 @@ _CACHE_LIMIT = 2048
 MIN_RECOMPUTE_SECONDS = 3.0
 
 _cache_lock = threading.Lock()
-_raw_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-_final_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-_dirty: set[str] = set()
+
+
+class _DayCache:
+    """Per-date memo with lazy invalidation.
+
+    Ingest marks dates stale rather than clearing them, and a stale entry is
+    still served until MIN_RECOMPUTE_SECONDS have passed, so a burst of live
+    records cannot make every concurrent reader recompute the same day.
+
+    Each cache owns its own stale set. Sharing one would let whichever cache
+    recomputed first clear the flag for all the others, leaving them serving
+    data they had already been told was out of date.
+    """
+
+    def __init__(self) -> None:
+        self.data: dict[str, tuple[float, dict[str, Any]]] = {}
+        self.dirty: set[str] = set()
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        with _cache_lock:
+            entry = self.data.get(key)
+            if entry is None:
+                return None
+            computed_at, value = entry
+            if key in self.dirty and (time.monotonic() - computed_at) >= MIN_RECOMPUTE_SECONDS:
+                return None
+            return value
+
+    def put(self, key: str, value: dict[str, Any]) -> None:
+        with _cache_lock:
+            self.data[key] = (time.monotonic(), value)
+            self.dirty.discard(key)
+            while len(self.data) > _CACHE_LIMIT:
+                self.data.pop(next(iter(self.data)))
+
+    def mark(self, dates: set[str], onwards: bool) -> None:
+        with _cache_lock:
+            self.dirty.update(dates)
+            if onwards:
+                # A day's final summary depends on later days' baselines, so
+                # everything cached from the earliest touched date onward is
+                # stale too.
+                earliest = min(dates)
+                self.dirty.update(k for k in self.data if k >= earliest)
+
+    def clear(self) -> None:
+        with _cache_lock:
+            self.data.clear()
+            self.dirty.clear()
+
+
+_raw_cache = _DayCache()
+_final_cache = _DayCache()
+# One past day's unscaled stress series. Rebuilding all fourteen of them per
+# request cost 1.7s under live ingest, and a finished day's series never
+# changes, so it is memoised under the same rules as the summaries.
+_stress_cache = _DayCache()
+_CACHES = (_raw_cache, _final_cache, _stress_cache)
 
 
 def _touched_dates(records: list[dict[str, Any]]) -> set[str]:
@@ -172,58 +265,26 @@ def _touched_dates(records: list[dict[str, Any]]) -> set[str]:
 
 
 def _invalidate(dates: set[str]) -> None:
-    """Mark dates stale. A day's final summary also depends on later days'
-    baselines, so anything cached from that date onward is dropped too."""
+    """Mark the dates these records touched stale, and nothing else."""
     if not dates:
         return
-    with _cache_lock:
-        _dirty.update(dates)
-        earliest = min(dates)
-        for key in [k for k in _final_cache if k >= earliest]:
-            _dirty.add(key)
+    for cache in _CACHES:
+        cache.mark(dates, onwards=cache is not _raw_cache)
 
 
 def _invalidate_cache() -> None:
-    with _cache_lock:
-        _raw_cache.clear()
-        _final_cache.clear()
-        _dirty.clear()
-
-
-def _trim(cache: dict[str, Any]) -> None:
-    while len(cache) > _CACHE_LIMIT:
-        cache.pop(next(iter(cache)))
-
-
-def _get_cached(cache: dict[str, tuple[float, dict[str, Any]]],
-                key: str) -> dict[str, Any] | None:
-    """Cached value, unless it is stale and old enough to be worth redoing."""
-    with _cache_lock:
-        entry = cache.get(key)
-        if entry is None:
-            return None
-        computed_at, value = entry
-        if key in _dirty and (time.monotonic() - computed_at) >= MIN_RECOMPUTE_SECONDS:
-            return None
-        return value
-
-
-def _put_cached(cache: dict[str, tuple[float, dict[str, Any]]],
-                key: str, value: dict[str, Any]) -> None:
-    with _cache_lock:
-        cache[key] = (time.monotonic(), value)
-        _dirty.discard(key)
-        _trim(cache)
+    for cache in _CACHES:
+        cache.clear()
 
 
 def _raw_summary(day: datetime) -> dict[str, Any]:
     """Day summary without baselines. Used to build the baseline series."""
     key = day.strftime("%Y-%m-%d")
-    cached = _get_cached(_raw_cache, key)
+    cached = _raw_cache.get(key)
     if cached is None:
         lo, hi = _day_bounds(day)
         cached = summarise_day(db.range(lo, hi), max_hr=MAX_HR, sleep_need_h=SLEEP_NEED_H)
-        _put_cached(_raw_cache, key, cached)
+        _raw_cache.put(key, cached)
     return cached
 
 
@@ -265,7 +326,7 @@ def _sensor_baselines(before: datetime, days: int) -> dict[str, float | None]:
 
 def _summarise(day: datetime) -> dict[str, Any]:
     key = day.strftime("%Y-%m-%d")
-    cached = _get_cached(_final_cache, key)
+    cached = _final_cache.get(key)
     if cached is not None:
         return cached
     lo, hi = _day_bounds(day)
@@ -276,7 +337,7 @@ def _summarise(day: datetime) -> dict[str, Any]:
     s["baselines"] = {"hrv_rmssd_ms": hrv_base, "resting_hr": rhr_base,
                       "window_days": BASELINE_DAYS,
                       "sensors": _sensor_baselines(day, BASELINE_DAYS)}
-    _put_cached(_final_cache, key, s)
+    _final_cache.put(key, s)
     return s
 
 
@@ -473,6 +534,175 @@ def api_advice(date: str | None = None,
     today = _summarise(day)
     history = [_summarise(day - timedelta(days=i)) for i in range(1, baseline_days + 1)]
     return {"date": day.strftime("%Y-%m-%d"), **suggest(today, history)}
+
+
+# --- detail views -----------------------------------------------------------
+def _series(day: datetime, days: int, *path: str) -> list[float]:
+    """One metric across the baseline window, most recent last."""
+    out: list[float] = []
+    for i in range(days, 0, -1):
+        s = _raw_summary(day - timedelta(days=i))
+        if not s.get("has_data"):
+            continue
+        node: Any = s
+        for key in path:
+            node = (node or {}).get(key) if isinstance(node, dict) else None
+        if isinstance(node, (int, float)):
+            out.append(float(node))
+    return out
+
+
+@app.get("/api/health-monitor")
+def api_health_monitor(date: str | None = None,
+                       days: int = Query(30, ge=7, le=120)) -> dict[str, Any]:
+    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    lo, hi = _day_bounds(day)
+    summary = _summarise(day)
+    records = db.range(lo, hi)
+    epochs = build_epochs(records)
+    sensors = summary.get("sensors") or {}
+
+    channels = [
+        channel("Resting HR", "bpm", (summary.get("heart_rate") or {}).get("resting"),
+                _series(day, days, "heart_rate", "resting"), decimals=0),
+        channel("HRV", "ms", (summary.get("hrv") or {}).get("rmssd_ms"),
+                _series(day, days, "hrv", "rmssd_ms"), decimals=0),
+        channel("Respiratory rate", "", sensors.get("resp_rate_raw"),
+                _series(day, days, "sensors", "resp_rate_raw"), raw=True),
+        channel("Blood oxygen", "", sensors.get("spo2_red"),
+                _series(day, days, "sensors", "spo2_red"), raw=True),
+        channel("Skin temperature", "", sensors.get("skin_temp_raw"),
+                _series(day, days, "sensors", "skin_temp_raw"), raw=True),
+    ]
+
+    hr_points = [{"t": e.unix, "v": e.hr} for e in epochs if e.hr is not None]
+    latest = hr_points[-1]["v"] if hr_points else None
+    resting = (summary.get("heart_rate") or {}).get("resting")
+    zone = None
+    if latest is not None and resting:
+        reserve = (latest - resting) / max(MAX_HR - resting, 1)
+        zone = max(0, min(5, int(reserve * 5) + (1 if reserve > 0.1 else 0)))
+
+    return {
+        "date": day.strftime("%Y-%m-%d"),
+        "heart_rate": {"latest": latest, "zone": zone,
+                       "points": hr_points[-720:],   # cap the payload
+                       "min": min((p["v"] for p in hr_points), default=None),
+                       "max": max((p["v"] for p in hr_points), default=None)},
+        "channels": channels,
+        "summary": summarise_channels(channels),
+        "baseline_days": days,
+        "note": ("Ranges are the 10th-90th percentile of your own recent history, "
+                 "not a clinical reference interval. Respiratory rate, blood oxygen "
+                 "and skin temperature arrive as raw sensor counts with no "
+                 "real-world unit, so a personal range is the only valid comparison "
+                 "for them."),
+    }
+
+
+def _stress_reference_day(past: datetime, hrv_base: float | None) -> list[float]:
+    """One past day's unscaled stress values, memoised.
+
+    The key is the date alone, because that is what ingest marks stale. The
+    HRV baseline is stored alongside and checked on the way out: it shifts as
+    new days land, and reusing a series built against an old one would
+    silently mix two scales.
+    """
+    key = past.strftime("%Y-%m-%d")
+    base = round(hrv_base, 1) if hrv_base else None
+    cached = _stress_cache.get(key)
+    if cached is not None and cached["hrv_base"] == base:
+        return cached["values"]
+
+    summary = _raw_summary(past)
+    values: list[float] = []
+    rest = (summary.get("heart_rate") or {}).get("resting")
+    if summary.get("has_data") and rest is not None:
+        lo, hi = _day_bounds(past)
+        values = [v for _, v in raw_series(build_epochs(db.range(lo, hi)),
+                                           rest, MAX_HR, hrv_base)]
+    entry = {"hrv_base": base, "values": values}
+    _stress_cache.put(key, entry)
+    return values
+
+
+@app.get("/api/stress")
+def api_stress(date: str | None = None,
+               days: int = Query(STRESS_BASELINE_DAYS, ge=3, le=60)) -> dict[str, Any]:
+    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    lo, hi = _day_bounds(day)
+    summary = _summarise(day)
+    epochs = build_epochs(db.range(lo, hi))
+    resting = (summary.get("heart_rate") or {}).get("resting")
+    hrv_base = (summary.get("baselines") or {}).get("hrv_rmssd_ms")
+
+    # Build the personal distribution the scale is expressed against.
+    reference: list[float] = []
+    for i in range(days, 0, -1):
+        reference.extend(_stress_reference_day(day - timedelta(days=i), hrv_base))
+
+    out = stress_day(epochs, resting, MAX_HR, hrv_base, reference)
+    out["date"] = day.strftime("%Y-%m-%d")
+    out["baseline_days"] = days
+    return out
+
+
+@app.get("/api/fitness-age")
+def api_fitness_age(days: int = Query(60, ge=14, le=180)) -> dict[str, Any]:
+    today = datetime.now(timezone.utc)
+    summary = _summarise(today)
+    resting = (summary.get("baselines") or {}).get("resting_hr") \
+        or (summary.get("heart_rate") or {}).get("resting")
+
+    estimate = estimate_vo2max(MAX_HR, resting) if resting else \
+        {"usable": False, "reason": "no resting heart rate yet"}
+
+    out: dict[str, Any] = {
+        "estimate": estimate,
+        "chronological_age": USER_AGE,
+        "sex_reference": USER_SEX,
+        "max_hr": MAX_HR,
+        "max_hr_measured": bool(os.environ.get("MAX_HR_MEASURED")),
+    }
+    if estimate.get("usable"):
+        out["age"] = fitness_age(estimate["vo2max"], USER_SEX, USER_AGE)
+
+        # The same estimate applied to each past day, for the trend.
+        history = []
+        for i in range(days, 0, -1):
+            past = _raw_summary(today - timedelta(days=i))
+            rest = (past.get("heart_rate") or {}).get("resting")
+            if not rest:
+                continue
+            e = estimate_vo2max(MAX_HR, rest)
+            if e.get("usable"):
+                fa = fitness_age(e["vo2max"], USER_SEX)
+                # "edge" travels with the point so the trend can refuse to read a
+                # slope through values pinned to the end of the reference table.
+                history.append({"days_ago": i, "fitness_age": fa["fitness_age"],
+                                "edge": fa["edge"], "vo2max": e["vo2max"]})
+        out["trend"] = fitness_trend(history)
+        # VO2 max keeps moving even where fitness age is clamped, so it is the
+        # honest fallback trend for the very fit and the very unfit.
+        out["vo2max_trend"] = vo2max_trend(history)
+        out["history"] = history[-days:]
+    if not USER_AGE:
+        out["needs_age"] = ("Set USER_AGE (and USER_SEX) on the server to compare "
+                            "this against your actual age.")
+    out["limits"] = [
+        "An estimate from your heart-rate ratio, not a lab test. The method was "
+        "validated in well-trained men (r = 0.92); it is weakest for people unlike "
+        "that group.",
+        ("Maximum heart rate is the 220-age rule unless you have measured yours, "
+         "and that rule carries roughly +/- 10-12 bpm of individual scatter, which "
+         "passes straight into this number.")
+        if not os.environ.get("MAX_HR_MEASURED") else
+        "Using your measured maximum heart rate.",
+        "This is cardiorespiratory fitness age. It is not biological or epigenetic "
+        "age, and no pace-of-ageing multiplier is shown, because nothing derived "
+        "from heart rate can support one. The trend below is your own movement.",
+    ]
+    return out
 
 
 # --- intake log -------------------------------------------------------------

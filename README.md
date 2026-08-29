@@ -113,6 +113,15 @@ medical measurements.
 ("Body battery" is a Garmin metric, not a WHOOP one — Recovery is the closest
 equivalent here.)
 
+Three cards open a full detail view of their own — **Health monitor** and
+**Stress** from Today, **Fitness age** from Body. Each lives on its own hash
+route (`#/health`, `#/stress`, `#/age`), so they are linkable and the back
+button works. See **[LEARNING.md](LEARNING.md#detail-views)** for what each one
+measures and, just as importantly, what it refuses to claim: the stress scale is
+your own distribution rather than WHOOP's Stress Score, fitness age is a VO₂ max
+comparison rather than biological age, and HRV is never scored against
+population norms.
+
 ## Setup
 
 The laptop half. For the server and tunnel, see **[DEPLOY.md](DEPLOY.md)**.
@@ -244,7 +253,23 @@ safer for the band's copy but stops the offload advancing past the first chunk.
 
 Server internals: `analytics.py` (metrics), `segment.py` (bout detection),
 `ml.py` (activity classifier), `insights.py` (statistics), `advice.py`
-(suggestions), `readiness.py` (progress and ETAs).
+(suggestions), `readiness.py` (progress and ETAs), `monitor.py` (personal
+ranges), `stress.py` (arousal scale), `norms.py` (VO₂ max and fitness age).
+
+### Staying responsive while the strap is connected
+
+Every metric is derived from raw records on demand, which is only fast because
+day summaries are memoised. Ingest **marks** the dates its records touch as
+stale rather than clearing the memo, and a stale entry is still served for a
+few seconds before anything recomputes — so a strap streaming records cannot
+make each concurrent read redo the same fourteen days. The summaries, the
+baseline series and the stress reference window each keep their own stale set,
+and the recent window is rebuilt on a background thread at startup so the first
+page load after a restart is already warm.
+
+Measured on a 70-day database while streaming records: the three detail
+endpoints answer in 120 ms at the median and 165 ms at the 95th percentile,
+with nothing over a second.
 
 ## Development
 

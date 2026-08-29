@@ -242,3 +242,93 @@ heavy night lingers.
 Correlated against overnight HRV, resting heart rate and sleep duration.
 **Not** against slow-wave sleep percentage — sleep staging needs signals this
 strap does not expose, so it is not estimated.
+
+---
+
+# Detail views
+
+Three cards on the main feed open a full screen of their own, each on its own
+hash route (`#/health`, `#/stress`, `#/age`) so they are linkable and the
+browser's back button behaves the way people expect. Tapping anywhere on the
+Health monitor or Stress card on **Today**, or the Fitness age card on
+**Body**, opens the matching view.
+
+## Health monitor — `#/health`
+
+Five channels, each with a *personal* normal range rather than a population
+one: resting heart rate, HRV, respiratory rate, skin temperature and blood
+oxygen.
+
+The range is the **10th–90th percentile of your own trailing baseline**. Three
+of the five channels are raw sensor counts with no real-world unit, so an
+absolute reference interval does not exist for them; the only comparison valid
+across all five is against yourself. A value inside the range is unremarkable
+*for you*; outside it is worth noticing. That is a statement about your own
+variation, not a clinical reference interval — and it needs at least seven days
+of history per channel before it says anything, which the card admits while it
+is still filling.
+
+The view shows each channel's current value, its band, the percentage
+difference from your own median, and the live heart-rate sparkline for the day.
+
+## Stress monitor — `#/stress`
+
+A 0.0–3.0 arc gauge, a band breakdown (low / medium / high) with minutes in
+each, and the day's curve.
+
+**This is not WHOOP's Stress Score**, which is a proprietary model. It combines
+the two things that reliably move together under autonomic arousal — heart rate
+above your resting level (weighted 0.6) and short-term HRV below your own
+baseline (0.4) — then expresses the result as a **position within your own
+historical distribution**.
+
+The scaling step is the important one. There is no absolute scale for "stress"
+from a wrist sensor, so a raw number would be arbitrary. Scoring against your
+own trailing distribution makes 0 and 3 mean something concrete: the calm and
+busy ends of *your* range. It also means the scale is meaningless until roughly
+ten hours of history exist to build that distribution from, so the view says so
+rather than showing a number it cannot justify.
+
+Values are smoothed over 5 minutes, and the heart-rate term is clamped at both
+ends, so a spike past your configured maximum cannot push the raw signal above
+1.0.
+
+## Fitness age — `#/age`
+
+Estimated VO₂ max, the age at which the population median VO₂ max equals yours,
+and whether your own estimate is moving.
+
+VO₂ max is estimated by the **heart-rate ratio method** (Uth et al. 2004,
+*Eur J Appl Physiol*): `15.3 × HRmax / HRrest`. Two limits, both shown in the
+view:
+
+1. It was validated in **well-trained men** (r = 0.92 against measured VO₂
+   max). It is an estimate, not a lab test, and it is weakest for people unlike
+   that validation group.
+2. It depends on a true maximum heart rate. Unless you have measured yours, the
+   configured value is the 220−age rule, which carries roughly ±10–12 bpm of
+   individual scatter. That error passes straight through to the number.
+
+Ratios outside 2.0–5.5 are refused rather than reported, because they almost
+always mean a bad resting-HR estimate rather than an extraordinary athlete.
+
+"Fitness age" is then the age whose population median VO₂ max matches yours,
+interpolated between ACSM/Cooper Institute reference bands and clamped to
+20–80. Set `USER_AGE` and `USER_SEX` for the comparison; without an age it
+still shows VO₂ max and the matching age, just not a delta.
+
+### What this deliberately is not
+
+* **Not biological or epigenetic age.** That needs methylation data. Nothing
+  derived from heart rate can speak to it.
+* **Not a "pace of ageing" multiplier.** The published pace-of-ageing measures
+  come from longitudinal biomarker panels, not wearables. What *can* honestly
+  be shown is whether your own fitness age is trending up or down over your own
+  history, which is what the trend line does — a within-person slope, labelled
+  as such.
+
+**HRV is not scored against population norms anywhere in this app.** The
+published norms (e.g. Nunan et al. 2010) are five-minute resting supine ECG;
+this measures overnight wrist optical, which reads systematically differently.
+Comparing them would look rigorous and be wrong, so HRV is only ever shown as
+your own trend.
