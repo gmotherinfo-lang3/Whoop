@@ -9,25 +9,42 @@
 /* Dark is the default look. Light is available via the toggle, and both
    palettes are defined explicitly so nothing inherits from the host. */
 :root{
-  --bg:#0d0d0d; --card:#1a1a19; --line:#2c2c2a; --axis:#383835;
-  --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
-  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
-  --strain:#3987e5; --strain-dim:rgba(57,135,229,.20);
-  --sleep:#d95926;  --sleep-dim:rgba(217,89,38,.20);
-  --track:#2c2c2a;
-  --r:16px;
+  /* OLED dark is the identity: pitch black ground, slate cards, neon accents
+     used sparingly for data and actions. Light mode keeps the same roles with
+     steps that are legible on white - neon on white is not. */
+  --bg:#000000; --card:#1E1E1E; --raised:#2A2A2A;
+  --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.14);
+  --axis:rgba(255,255,255,.18);
+  --ink:#FFFFFF; --ink2:#C7C7CC; --muted:#8E8E93;
+  --good:#00FF87;   /* neon mint    */
+  --warn:#FFD60A;   /* amber        */
+  --crit:#FF3B30;   /* alert red    */
+  --strain:#00E5FF; /* electric cyan */
+  --sleep:#9D00FF;  /* vivid purple  */
+  --strain-dim:rgba(0,229,255,.16); --sleep-dim:rgba(157,0,255,.18);
+  --track:rgba(255,255,255,.10);
+  --r:16px; --r-sm:12px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --dur:250ms;
 }
 :root[data-theme="light"]{
-  --bg:#f9f9f7; --card:#fcfcfb; --line:#e1e0d9; --axis:#c3c2b7;
-  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
-  --strain:#2a78d6; --strain-dim:rgba(42,120,214,.18);
-  --sleep:#eb6834;  --sleep-dim:rgba(235,104,52,.18);
-  --track:#e1e0d9;
+  --bg:#F5F5F7; --card:#FFFFFF; --raised:#FFFFFF;
+  --line:rgba(0,0,0,.10); --line-strong:rgba(0,0,0,.16); --axis:rgba(0,0,0,.22);
+  --ink:#0B0B0B; --ink2:#3A3A3C; --muted:#6E6E73;
+  --good:#0ca30c; --warn:#B8860B; --crit:#D03B3B;
+  --strain:#0071A4; --sleep:#7C3AED;
+  --strain-dim:rgba(0,113,164,.12); --sleep-dim:rgba(124,58,237,.12);
+  --track:rgba(0,0,0,.09);
 }
 *{box-sizing:border-box}
 html,body{background:var(--bg)}
+/* SF Pro on Apple devices via -apple-system, Segoe/Roboto elsewhere. Not
+   loaded from a font CDN: this app is local-first and a webfont would add an
+   external request on every view. */
 body{margin:0;color:var(--ink);
-  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",
+    "Segoe UI",Roboto,system-ui,sans-serif;
+  letter-spacing:-.01em;
   padding:max(10px,env(safe-area-inset-top)) 14px calc(78px + env(safe-area-inset-bottom));
   -webkit-font-smoothing:antialiased}
 nav button{transition:color .2s,background .2s}
@@ -46,8 +63,24 @@ button.icon{background:transparent;border:1px solid var(--line);color:var(--ink2
 
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
   padding:18px;margin-bottom:12px}
-h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+/* Light scale-down on press, per the spec's micro-feedback rule. */
+button,.chip,.arow.head,.dev{-webkit-tap-highlight-color:transparent}
+button:active,.chip:active,.arow.head:active,.dev:active{transform:scale(.98)}
+button,.chip,.arow.head,.dev{transition:transform .12s var(--ease),
+  background var(--dur) var(--ease),border-color var(--dur) var(--ease),
+  color var(--dur) var(--ease)}
+h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);
   margin:0 0 14px;font-weight:600}
+
+/* ---- skeleton loader (pulsing lines, not a spinner) ---- */
+@keyframes shimmer{0%,100%{opacity:.30}50%{opacity:.68}}
+.sk{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:18px;margin-bottom:12px}
+.sk i{display:block;background:var(--track);border-radius:7px;
+  animation:shimmer 1.5s var(--ease) infinite}
+.sk .arc{width:132px;height:132px;border-radius:50%;margin:6px auto 16px;
+  border:9px solid var(--track);animation:shimmer 1.5s var(--ease) infinite}
+.sk-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
 /* ---- device chip ---- */
 .dev{display:flex;align-items:center;gap:7px;background:var(--card);
@@ -99,8 +132,7 @@ h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mute
 .ringbar{position:sticky;top:0;z-index:8;background:var(--bg);margin:0 -14px 12px;
   padding:2px 14px 10px;transition:padding .3s cubic-bezier(.4,0,.2,1),
   box-shadow .3s,border-color .3s;border-bottom:1px solid transparent}
-.ringbar.compact{padding-top:8px;padding-bottom:6px;border-bottom-color:var(--line);
-  box-shadow:0 6px 18px -12px rgba(0,0,0,.6)}
+.ringbar.compact{padding-top:8px;padding-bottom:6px;border-bottom-color:var(--line)}
 .datenav{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:10px;
   transition:opacity .25s,max-height .3s,margin .3s;overflow:hidden;max-height:44px}
 .ringbar.compact .datenav{opacity:0;max-height:0;margin-bottom:0;pointer-events:none}
@@ -122,8 +154,8 @@ h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mute
   transition:opacity .22s}
 .ringcell .rgv small{font-size:12px;color:var(--muted);font-weight:500}
 .ringbar.compact .ringcell .rgv{opacity:0}
-.ringcell .cap{font-size:10px;text-transform:uppercase;letter-spacing:.1em;
-  color:var(--muted);font-weight:600;transition:color .25s}
+.ringcell .cap{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;
+  color:var(--muted);font-weight:600;transition:color var(--dur) var(--ease)}
 .ringcell .cap b{color:var(--ink);font-weight:600}
 .ringbar.compact .ringcell .cap{color:var(--ink2)}
 
@@ -133,7 +165,7 @@ h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mute
 .hm .c+.c::before{content:"";position:absolute;left:0;top:14%;bottom:14%;
   width:1px;background:var(--line)}
 .hm .c svg{opacity:.65;margin-bottom:5px}
-.hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
 .hm .c .v{font-size:15px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
 .hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
 .hm .c .v.none{color:var(--muted);font-weight:400}
@@ -175,7 +207,7 @@ h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mute
 
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
-.stat .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
 .stat .val{font-size:27px;font-weight:600;margin-top:4px;letter-spacing:-.02em}
 .stat .val small{font-size:13px;color:var(--muted);font-weight:400}
 .stat .note{font-size:11px;color:var(--muted);margin-top:3px}
@@ -184,6 +216,8 @@ h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mute
 /* ---- suggestions ---- */
 .sug{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--muted);
   border-radius:var(--r);padding:15px 17px;margin-bottom:10px}
+.sug.warning{background:linear-gradient(90deg,
+  color-mix(in srgb,var(--crit) 7%,var(--card)),var(--card) 42%)}
 .sug.warning{border-left-color:var(--crit)}
 .sug.notice{border-left-color:var(--warn)}
 .sug.info{border-left-color:var(--good)}
@@ -201,10 +235,10 @@ details.more p{margin-top:7px;font-size:12px;color:var(--muted)}
 /* ---- chart ---- */
 .chart{position:relative;width:100%}
 .chart svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
-.tip{position:absolute;pointer-events:none;background:var(--bg);
-  border:1px solid var(--axis);border-radius:9px;padding:7px 10px;font-size:12px;
-  white-space:nowrap;opacity:0;transition:opacity .1s;z-index:5;
-  box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.tip{position:absolute;pointer-events:none;background:var(--raised);
+  border:1px solid var(--line-strong);border-radius:10px;padding:7px 10px;
+  font-size:12px;white-space:nowrap;opacity:0;transition:opacity .12s var(--ease);
+  z-index:5;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .tip b{font-weight:600;font-variant-numeric:tabular-nums}
 .tip .d{color:var(--muted);font-size:10.5px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--ink2)}
@@ -233,7 +267,7 @@ details.more p{margin-top:7px;font-size:12px;color:var(--muted)}
 /* ---- lists / rows ---- */
 .arow{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid var(--line)}
 .arow:last-child{border-bottom:none}
-.arow .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+.arow .ic{width:38px;height:38px;border-radius:var(--r-sm);display:grid;place-items:center;
   font-size:17px;flex:0 0 auto;background:var(--strain-dim)}
 .arow .m{flex:1 1 auto;min-width:0}
 .arow .m .t{font-weight:600;font-size:14px}
@@ -247,16 +281,19 @@ details.more p{margin-top:7px;font-size:12px;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{border:1px solid var(--line);background:var(--card);color:var(--ink2);
   border-radius:999px;padding:9px 15px;font:inherit;font-size:13.5px;cursor:pointer}
-.chip[aria-pressed="true"]{background:var(--strain);border-color:var(--strain);color:#fff}
+.chip[aria-pressed="true"]{background:var(--strain);border-color:var(--strain);
+  color:#000;font-weight:600}
 input,textarea,select{background:var(--bg);border:1px solid var(--line);color:var(--ink);
-  border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;width:100%}
+  border-radius:var(--r-sm);padding:10px 12px;font:inherit;font-size:13.5px;width:100%}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--strain)}
 textarea{min-height:78px;resize:vertical}
 .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 .row>*{flex:1 1 auto;min-width:0}
-.btn{background:var(--strain);border:none;color:#fff;padding:11px 18px;border-radius:10px;
-  font:inherit;font-size:13.5px;font-weight:550;cursor:pointer;flex:0 0 auto}
+.btn{background:var(--strain);border:none;color:#000;padding:11px 18px;
+  border-radius:var(--r-sm);font:inherit;font-size:13.5px;font-weight:650;
+  cursor:pointer;flex:0 0 auto}
 .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink2);
-  padding:9px 14px;font-weight:400}
+  padding:9px 14px;font-weight:400;border-radius:var(--r-sm)}
 
 /* ---- progress ---- */
 .prog{margin-top:12px}
@@ -264,13 +301,14 @@ textarea{min-height:78px;resize:vertical}
   color:var(--ink2);margin-bottom:7px}
 .prog .t b{color:var(--ink);font-weight:600}
 .prog .bar{height:8px;background:var(--track);border-radius:5px;overflow:hidden}
-.prog .bar i{display:block;height:100%;background:var(--strain);border-radius:5px}
+.prog .bar i{display:block;height:100%;background:var(--strain);border-radius:5px;
+  transition:width .6s var(--ease)}
 
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 th,td{text-align:right;padding:9px 5px;border-bottom:1px solid var(--line);
   font-variant-numeric:tabular-nums}
 th:first-child,td:first-child{text-align:left}
-th{color:var(--muted);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.07em}
+th{color:var(--muted);font-weight:500;font-size:9.5px;text-transform:uppercase;letter-spacing:1.2px}
 tr:last-child td{border-bottom:none}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .muted{color:var(--muted);font-size:12.5px;line-height:1.6}
@@ -278,14 +316,19 @@ tr:last-child td{border-bottom:none}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 
 /* ---- bottom tab bar ---- */
-nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:var(--card);
-  border-top:1px solid var(--line);display:flex;
+nav{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;
+  background:color-mix(in srgb,var(--card) 72%,transparent);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  backdrop-filter:blur(20px) saturate(180%);
+  border-top:1px solid var(--line);
   padding:7px 6px calc(7px + env(safe-area-inset-bottom))}
+@supports not (backdrop-filter:blur(1px)){ nav{background:var(--card)} }
 nav button{flex:1 1 0;background:none;border:none;color:var(--muted);cursor:pointer;
   font:inherit;font-size:10px;padding:5px 2px;display:flex;flex-direction:column;
   align-items:center;gap:3px;border-radius:10px;letter-spacing:.02em}
 nav button .g{font-size:18px;line-height:1}
-nav button[aria-selected="true"]{color:var(--ink)}
+nav button[aria-selected="true"]{color:var(--strain)}
+nav button:active{transform:scale(.96)}
 @media (min-width:680px){
   body{padding-bottom:30px}
   nav{position:static;border:1px solid var(--line);border-radius:999px;
@@ -304,7 +347,7 @@ nav button[aria-selected="true"]{color:var(--ink)}
         <span class="pct dim" id="devpct">--%</span>
         <span class="strap">
           <svg width="15" height="21" viewBox="0 0 15 21" fill="none" stroke="currentColor"
-               stroke-width="1.3" aria-hidden="true">
+               stroke-width="1.5" aria-hidden="true">
             <rect x="1.6" y="1.4" width="11.8" height="18.2" rx="4.4"/>
             <path d="M4.4 6.2h6.2M4.4 14.6h6.2" opacity=".5"/>
           </svg>
@@ -341,6 +384,26 @@ const GLYPH = {run:"🏃",walk:"🚶",cycle:"🚲",swim:"🏊",lift:"🏋",hiit:
   sport:"⚽",sleep:"🌙",sedentary:"🪑",other:"•",hard_workout:"🔥",workout:"💪",cardio:"❤"};
 
 function today(){ return new Date().toISOString().slice(0,10); }
+
+// Shaped like the content that is coming, so the layout does not jump.
+const SKELETONS = {
+  today: `<div class="sk"><div class="arc"></div>
+      <i style="height:13px;width:44%;margin:0 auto 9px"></i>
+      <i style="height:10px;width:66%;margin:0 auto"></i></div>
+    <div class="sk-row"><div class="sk"><i style="height:11px;width:40%"></i>
+      <i style="height:24px;width:62%;margin-top:10px"></i></div>
+      <div class="sk"><i style="height:11px;width:40%"></i>
+      <i style="height:24px;width:62%;margin-top:10px"></i></div></div>
+    <div class="sk"><i style="height:11px;width:34%"></i>
+      <i style="height:88px;margin-top:14px"></i></div>`,
+  list: `<div class="sk"><i style="height:11px;width:32%"></i>
+      <i style="height:15px;width:88%;margin-top:14px"></i>
+      <i style="height:15px;width:72%;margin-top:9px"></i>
+      <i style="height:15px;width:80%;margin-top:9px"></i></div>
+    <div class="sk"><i style="height:11px;width:26%"></i>
+      <i style="height:15px;width:66%;margin-top:14px"></i>
+      <i style="height:15px;width:78%;margin-top:9px"></i></div>`
+};
 function hhmm(u){ return new Date(u*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
 // Deferred writes can fire after the node is gone (timers, late promises).
 function say(sel,text){ const n=$(sel); if(n) n.textContent=text; }
@@ -465,19 +528,35 @@ function lineChart(points, opts){
   const span=(hi-lo)||1, y0=lo-span*0.15, y1=hi+span*0.15;
   const X=i=>PAD.l+(i/(points.length-1))*(W-PAD.l-PAD.r);
   const Y=v=>PAD.t+(1-(v-y0)/(y1-y0))*(H-PAD.t-PAD.b);
-  const seg=[]; let open=false;
+  const seg=[]; let open=false; const pts=[];
   points.forEach((p,i)=>{ if(p.v==null){open=false;return;}
-    seg.push(`${open?"L":"M"} ${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`); open=true; });
+    seg.push(`${open?"L":"M"} ${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`);
+    pts.push([X(i),Y(p.v)]); open=true; });
   const ticks=[y0+(y1-y0)*0.15, (y0+y1)/2, y1-(y1-y0)*0.15];
+  // Area under the line, fading into the background rather than filling solid.
+  const gid = "g"+Math.random().toString(36).slice(2,8);
+  const area = pts.length>1
+    ? `M ${pts[0][0].toFixed(1)} ${(H-PAD.b).toFixed(1)} `
+      + pts.map(([x,y])=>`L ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")
+      + ` L ${pts[pts.length-1][0].toFixed(1)} ${(H-PAD.b).toFixed(1)} Z`
+    : "";
   return `<div class="chart" data-chart='${esc(JSON.stringify({points,y0,y1,PAD,W,H,unit:o.unit,label:o.label}))}'>
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
          aria-label="${esc(o.label)} over time">
+      <defs>
+        <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${o.color}" stop-opacity=".28"/>
+          <stop offset="100%" stop-color="${o.color}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${area?`<path d="${area}" fill="url(#${gid})" stroke="none"/>`:""}
       ${ticks.map(t=>`<line x1="${PAD.l}" x2="${W-PAD.r}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}"
         stroke="${css('--line')}" stroke-width="1"/>
         <text x="${PAD.l-7}" y="${(Y(t)+3.5).toFixed(1)}" text-anchor="end"
           fill="${css('--muted')}" font-size="10">${t.toFixed(0)}</text>`).join("")}
       <path d="${seg.join(" ")}" fill="none" stroke="${o.color}" stroke-width="2"
         stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <circle class="glow" r="9" fill="${o.color}" opacity="0" style="filter:blur(5px)"/>
       <circle class="cur" r="4.5" fill="${o.color}" stroke="${css('--card')}" stroke-width="2" opacity="0"/>
       <line class="cross" y1="${PAD.t}" y2="${H-PAD.b}" stroke="${css('--axis')}"
         stroke-width="1" opacity="0"/>
@@ -495,6 +574,7 @@ function wireCharts(root){
     const cfg = JSON.parse(box.dataset.chart);
     const svg = box.querySelector("svg"), tip = box.querySelector(".tip");
     const cur = box.querySelector(".cur"), cross = box.querySelector(".cross");
+    const glow = box.querySelector(".glow");
     const {points,y0,y1,PAD,W,H} = cfg;
     const X=i=>PAD.l+(i/(points.length-1))*(W-PAD.l-PAD.r);
     const Y=v=>PAD.t+(1-(v-y0)/(y1-y0))*(H-PAD.t-PAD.b);
@@ -509,6 +589,8 @@ function wireCharts(root){
       const p=points[best];
       cur.setAttribute("cx",X(best)); cur.setAttribute("cy",Y(p.v));
       cur.setAttribute("opacity","1");
+      if(glow){ glow.setAttribute("cx",X(best)); glow.setAttribute("cy",Y(p.v));
+                glow.setAttribute("opacity",".75"); }
       cross.setAttribute("x1",X(best)); cross.setAttribute("x2",X(best));
       cross.setAttribute("opacity","1");
       tip.innerHTML = `<b>${p.v}${cfg.unit}</b> <span class="d">${p.t}</span>`;
@@ -518,7 +600,8 @@ function wireCharts(root){
       tip.style.top = Math.max(0, Y(p.v)/H*rect.height - tip.offsetHeight - 10)+"px";
     };
     const hide = () => { tip.style.opacity="0"; cur.setAttribute("opacity","0");
-                         cross.setAttribute("opacity","0"); };
+                         cross.setAttribute("opacity","0");
+                         if(glow) glow.setAttribute("opacity","0"); };
     svg.addEventListener("mousemove",move);
     svg.addEventListener("mouseleave",hide);
     svg.addEventListener("touchmove",move,{passive:true});
@@ -536,7 +619,7 @@ const HM_ICONS = {
 
 function hmIcon(kind){
   return `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"
-    stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
     stroke-linejoin="round" aria-hidden="true">${HM_ICONS[kind]}</svg>`;
 }
 
@@ -1054,7 +1137,7 @@ let renderToken = 0;
 async function render(){
   const my = ++renderToken, tab = state.tab, el = $("#content");
   const stale = () => my !== renderToken;
-  el.innerHTML = `<div class="empty">Loading…</div>`;
+  el.innerHTML = SKELETONS[tab === "today" ? "today" : "list"];
   try{
     await TABS[tab](el, stale);
     if(stale()) return;

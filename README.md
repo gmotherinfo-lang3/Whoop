@@ -78,7 +78,8 @@ Tap it for the detail. Battery comes from the strap's standard BLE battery
 service, with the proprietary `BATTERY_LEVEL` event (which also carries voltage
 and charging state) as a second source.
 
-The dashboard is dark by default with a light toggle, leads with a recovery
+The dashboard is OLED dark by default (pitch black ground, slate cards, neon
+accents used sparingly) with a light toggle, leads with a recovery
 ring plus strain and sleep meters, and uses a bottom tab bar on phones. Colour
 carries meaning only alongside a label, effect sizes are grouped by outcome so
 units never share an axis, and charts have a hover/touch readout.
