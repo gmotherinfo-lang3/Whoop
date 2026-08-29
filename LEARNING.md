@@ -332,3 +332,76 @@ published norms (e.g. Nunan et al. 2010) are five-minute resting supine ECG;
 this measures overnight wrist optical, which reads systematically differently.
 Comparing them would look rigorous and be wrong, so HRV is only ever shown as
 your own trend.
+
+---
+
+# What end-to-end testing found
+
+The unit tests all passed before any of this. These are failures that only
+appear when the real pieces are wired together and pushed.
+
+## One bad record used to stop the strap permanently
+
+The worst one. `insert_records` bound record fields straight into SQLite, so a
+value of the wrong shape — a dict where a number belongs — raised
+`sqlite3.ProgrammingError` and `/ingest` answered **500**.
+
+That is not one lost record. The bridge deletes a spooled row only after a 2xx
+and treats every 5xx as retryable, so the batch would have been retried
+forever: the queue never drains, no further data arrives, and the dashboard
+still shows the bridge as connected because the heartbeat is a separate
+channel. Data would have stopped silently and looked fine.
+
+Fixed by coercing anything unbindable to NULL (`raw_hex` still carries the
+original bytes, so nothing is truly lost) and falling back to row-at-a-time
+inserts so one bad row cannot take the other forty-nine with it. Regression
+tests are in `tests/test_live.py`; `tests/e2e/phase_poison.py` puts one
+unstorable record among eighty good ones and requires the queue to drain.
+
+The first version of that fix had the same hole in a second place. SQLite
+stores integers in 64 signed bits and Python's do not stop there, so an
+integer from a misdecoded frame raises **`OverflowError`** — which is not an
+`sqlite3` exception, so it walked straight past handling that named only
+`sqlite3` errors and produced the same 500 and the same stalled queue. Values
+outside the 64-bit range are now nulled at the coercion step, and the fallback
+catches `OverflowError`, `ValueError` and `TypeError` as well. Worth stating
+plainly: catching by module rather than by what can actually be raised is what
+made the second hole look like it was already covered.
+
+## Coming back to the app threw away what you were typing
+
+`visibilitychange` triggered a background refresh, and a refresh rebuilds
+`#content` from scratch. Glance at a notification mid-journal-entry, come back,
+and the sentence is gone — on a phone, which is where journal entries actually
+get written, that is not an edge case.
+
+A background refresh now compares the form against how it was rendered and
+stands down if anything has been touched. A tab tap or a save still re-renders
+immediately, because those are deliberate. Saving re-stamps the signature so
+refreshes resume. A refresh is worth less than the sentence someone is in the
+middle of writing.
+
+## Typing a tag that already existed appeared to do nothing
+
+"Add" refused duplicates by returning silently, leaving the text sitting in the
+box. It now selects the existing chip and clears the input.
+
+## What held up
+
+Worth recording, because these were the parts most likely to be wrong:
+
+* **The setup bundle gate.** A LAN client and a logged-in browser get it; an
+  unauthenticated request never reaches the app; and a *service token* is
+  refused — Cloudflare sets `common_name` rather than an email for service
+  tokens, so the bundle, which contains a live credential, correctly declines
+  to hand itself to a machine identity.
+* **Outage recovery.** Killing the server mid-stream and restarting it lost
+  nothing and duplicated nothing, and the same held across a simulated laptop
+  reboot with 120 records still queued.
+* **Both clients at once.** Fifty concurrent journal writes from two clients
+  all succeeded and left one coherent entry rather than a mixture, and the
+  phone's writes kept succeeding under a 500-record-per-run ingest load.
+* **The awkward inputs.** A strap with a lost RTC (1970 timestamps), a clock
+  running years ahead, out-of-order bursts, 5000-record catch-ups, absurd heart
+  rates and zero-length RR intervals were all absorbed without corrupting a day
+  or reporting a fake number.

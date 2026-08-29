@@ -158,3 +158,109 @@ def test_reads_and_writes_can_run_together(tmp_path):
         t.join(timeout=10)
     assert errors == []
     db.close()
+
+
+# --- records the database cannot store --------------------------------------
+# Found by end-to-end testing: one record with a dict where a number belongs
+# raised sqlite3.ProgrammingError out of insert_records, so /ingest answered
+# 500. The bridge treats 5xx as retryable and only deletes a spooled row after
+# a 2xx, so that one record would have stalled the queue permanently and the
+# strap would have stopped delivering with no visible error.
+def _db(tmp_path):
+    from server.app.db import Database
+    return Database(tmp_path / "t.db")
+
+
+def test_an_unbindable_value_does_not_fail_the_batch(tmp_path):
+    db = _db(tmp_path)
+    batch = [rec(BASE + 60), rec(BASE + 120), rec(BASE + 180)]
+    batch[1]["heart_rate"] = {"nested": "object"}      # cannot be bound
+    received, inserted = db.insert_records(batch)
+    assert received == 3
+    assert inserted == 3, "the good rows must still land"
+    stored = {r["record_id"] for r in db.range(BASE, BASE + 600)}
+    assert stored == {b["record_id"] for b in batch}
+
+
+def test_an_unbindable_value_is_stored_as_null_not_as_junk(tmp_path):
+    db = _db(tmp_path)
+    r = rec(BASE + 60)
+    r["heart_rate"] = ["not", "a", "number"]
+    db.insert_records([r])
+    row = db.range(BASE, BASE + 600)[0]
+    assert row["heart_rate"] is None
+
+
+def test_every_column_survives_a_wrong_type(tmp_path):
+    """Whatever shape arrives, the batch is accepted and the row is stored."""
+    db = _db(tmp_path)
+    junk = {"a": 1}
+    for i, field in enumerate(["received_at", "unix", "packet", "version",
+                               "heart_rate", "gravity_x", "skin_contact",
+                               "ppg_green", "spo2_red", "skin_temp_raw",
+                               "resp_rate_raw", "signal_quality", "raw_hex"]):
+        r = rec(BASE + 1000 + i * 60)
+        r[field] = junk
+        received, inserted = db.insert_records([r])
+        assert (received, inserted) == (1, 1), f"{field} broke the insert"
+
+
+def test_rr_intervals_of_the_wrong_shape_do_not_break_the_row(tmp_path):
+    db = _db(tmp_path)
+    for i, bad in enumerate(["830", {"rr": 830}, 830, None]):
+        r = rec(BASE + 2000 + i * 60)
+        r["rr_intervals_ms"] = bad
+        assert db.insert_records([r]) == (1, 1)
+    for row in db.range(BASE + 2000, BASE + 2600):
+        assert row["rr_intervals_ms"] == []
+
+
+def test_an_integer_too_big_for_sqlite_does_not_fail_the_batch(tmp_path):
+    """OverflowError is not an sqlite3 error, so it is easy to leave uncaught.
+
+    A misdecoded frame can produce an integer outside 64 bits, and that would
+    have escaped the sqlite3-only exception handling as another 500.
+    """
+    db = _db(tmp_path)
+    for i, value in enumerate([2 ** 100, -(2 ** 100), 10 ** 40]):
+        r = rec(BASE + 3000 + i * 60)
+        r["unix"] = value
+        assert db.insert_records([r]) == (1, 1)
+        r2 = rec(BASE + 4000 + i * 60)
+        r2["heart_rate"] = value
+        assert db.insert_records([r2]) == (1, 1)
+
+
+def test_the_largest_integer_sqlite_can_hold_is_still_stored(tmp_path):
+    db = _db(tmp_path)
+    r = rec(BASE + 60)
+    r["heart_rate"] = 2 ** 63 - 1
+    db.insert_records([r])
+    assert db.range(BASE, BASE + 600)[0]["heart_rate"] == 2 ** 63 - 1
+
+
+def test_a_record_with_a_non_string_id_is_skipped_not_fatal(tmp_path):
+    db = _db(tmp_path)
+    received, inserted = db.insert_records([
+        {"record_id": {"a": 1}, "unix": BASE},
+        {"record_id": ["x"], "unix": BASE},
+        rec(BASE + 60),
+    ])
+    assert (received, inserted) == (3, 1)
+
+
+def test_a_booleans_stored_as_integers(tmp_path):
+    db = _db(tmp_path)
+    r = rec(BASE + 60)
+    r["skin_contact"] = True
+    db.insert_records([r])
+    assert db.range(BASE, BASE + 600)[0]["skin_contact"] == 1
+
+
+def test_an_event_with_a_wrong_shaped_field_is_still_accepted(tmp_path):
+    db = _db(tmp_path)
+    received, inserted = db.insert_records([
+        {"record_id": "e1", "packet": "EVENT", "event": {"n": 3},
+         "event_time": ["now"], "received_at": None},
+    ])
+    assert (received, inserted) == (1, 1)

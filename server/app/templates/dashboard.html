@@ -1123,9 +1123,16 @@ async function renderJournal(el, stale, quiet){
     b.setAttribute("aria-pressed", b.getAttribute("aria-pressed")==="true"?"false":"true"); };
   $("#addtag").onclick = () => {
     const v=$("#newtag").value.trim().toLowerCase().replace(/\s+/g,"_");
-    if(!v || $(`[data-tag="${v}"]`)) return;
-    $("#tags").insertAdjacentHTML("beforeend",
-      `<button class="chip" data-tag="${esc(v)}" aria-pressed="true">${esc(v.replace(/_/g," "))}</button>`);
+    if(!v) return;
+    const existing = $(`[data-tag="${CSS.escape(v)}"]`);
+    if(existing){
+      // Already in the list. Select it rather than appearing to do nothing.
+      existing.setAttribute("aria-pressed","true");
+      existing.scrollIntoView({block:"nearest", inline:"nearest"});
+    } else {
+      $("#tags").insertAdjacentHTML("beforeend",
+        `<button class="chip" data-tag="${esc(v)}" aria-pressed="true">${esc(v.replace(/_/g," "))}</button>`);
+    }
     $("#newtag").value="";
   };
   // Preset list follows the substance, so amounts are a familiar thing to pick.
@@ -1165,6 +1172,7 @@ async function renderJournal(el, stale, quiet){
       await api(`/api/journal/${state.date}`,{method:"PUT",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({tags,amounts:{},notes:$("#jnotes").value})});
+      markSaved();
       say("#jsaved","saved ✓"); setTimeout(()=>say("#jsaved",""),2000);
     }catch(err){ say("#jsaved","save failed: "+err.message); }
   };
@@ -1715,10 +1723,41 @@ function currentDetail(){
   const m = /^#\/(\w+)$/.exec(location.hash || "");
   return m && DETAILS[m[1]] ? m[1] : null;
 }
+// --- protecting work in progress -------------------------------------------
+// A background refresh rebuilds #content from scratch. If the reader is part
+// way through a journal entry when one lands -- and on a phone that happens
+// every time they glance at a notification and come back -- their typing is
+// gone. So a quiet refresh compares the form against how it was rendered and
+// stands down if anything has been touched. A refresh is worth less than the
+// sentence someone is in the middle of writing.
+function formSignature(root){
+  if(!root) return "";
+  const parts = [];
+  root.querySelectorAll("input, textarea, select").forEach((el, i) => {
+    parts.push(i + ":" + (el.type === "checkbox" || el.type === "radio"
+      ? el.checked : el.value));
+  });
+  root.querySelectorAll("[data-tag]").forEach(el => {
+    parts.push("tag:" + el.dataset.tag + "=" + el.getAttribute("aria-pressed"));
+  });
+  return parts.join("\u0001");
+}
+let renderedSignature = "";
+function hasUnsavedInput(){
+  return formSignature($("#content")) !== renderedSignature;
+}
+// Once the work is safely on the server it is no longer work in progress.
+function markSaved(){ renderedSignature = formSignature($("#content")); }
+
 // A slow render must never overwrite a tab the user has since switched to.
 let renderToken = 0;
 async function render(opts){
   const quiet = !!(opts && opts.quiet);
+  // Never rebuild under someone's hands. Only a background refresh defers;
+  // a tab tap or a save is a deliberate act and always re-renders. This has
+  // to come before the token is claimed: bumping it and then returning would
+  // cancel a render already in flight and strand the skeleton on screen.
+  if(quiet && hasUnsavedInput()) return;
   const my = ++renderToken, el = $("#content");
   const detail = currentDetail();
   const tab = detail || state.tab;
@@ -1734,6 +1773,7 @@ async function render(opts){
       if(back) back.onclick = closeDetail;
     }
     if(stale()) return;
+    renderedSignature = formSignature(el);
     syncDevPanel();
     say("#updated","updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
   }catch(e){

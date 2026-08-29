@@ -14,3 +14,9 @@ dist/
 
 .env
 server/data/
+
+# End-to-end runs write their databases, spools, bundles and logs beside the
+# phases unless E2E_WORK points elsewhere.
+tests/e2e/state*/
+tests/e2e/*.out
+tests/e2e/config.toml

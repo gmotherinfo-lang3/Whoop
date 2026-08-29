@@ -278,6 +278,22 @@ pip install -e . && pip install pytest
 python -m pytest tests/ -q
 ```
 
+### End-to-end tests
+
+`tests/e2e/` drives the whole system the way it is actually used — a server, a
+laptop bridging a strap, and a phone through a Cloudflare tunnel — with the
+real server, the real spool and forwarder, real CRC-valid frames and real
+Chromium. Only the Bluetooth radio and Cloudflare itself are stood in for, and
+both faithfully enough to catch protocol and Access mistakes.
+
+```bash
+pip install playwright starlette httpx
+python tests/e2e/run.py
+```
+
+They are not collected by `pytest` (they start servers and take minutes). See
+[tests/e2e/README.md](tests/e2e/README.md) for what each phase establishes.
+
 Protocol details are in [`PROTOCOL.md`](PROTOCOL.md), deployment in
 [`DEPLOY.md`](DEPLOY.md), and the learning features in
 [`LEARNING.md`](LEARNING.md).

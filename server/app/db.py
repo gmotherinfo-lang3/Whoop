@@ -8,11 +8,47 @@ re-offloading the same record, so `INSERT OR IGNORE` is all that is needed.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 import threading
 from pathlib import Path
 from typing import Any, Iterable
+
+log = logging.getLogger("whoop.db")
+
+# Everything binding a value can raise. OverflowError is not an sqlite3 error
+# and is easy to miss: an int outside 64 bits raises it rather than
+# InterfaceError, and would otherwise escape as a 500.
+UNBINDABLE = (sqlite3.InterfaceError, sqlite3.ProgrammingError, sqlite3.DataError,
+              OverflowError, ValueError, TypeError)
+
+# Column order of the records table, minus record_id and rr_json which are
+# handled separately. Keeping it in one place stops the tuple and the table
+# drifting apart.
+RECORD_FIELDS = (
+    "received_at", "unix", "packet", "version", "heart_rate",
+    "gravity_x", "gravity_y", "gravity_z", "skin_contact", "ppg_green",
+    "ppg_red_ir", "spo2_red", "spo2_ir", "skin_temp_raw", "ambient_light",
+    "resp_rate_raw", "signal_quality", "raw_hex",
+)
+
+
+# SQLite stores integers in 64 signed bits. Python's do not stop there, and a
+# misdecoded frame can produce one that does not fit.
+INT64_MIN, INT64_MAX = -(2 ** 63), 2 ** 63 - 1
+
+
+def _scalar(value: Any) -> Any:
+    """Anything SQLite can bind, or None. Booleans become integers."""
+    if value is None or isinstance(value, (str, bytes, float)):
+        return value
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value if INT64_MIN <= value <= INT64_MAX else None
+    return None
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS records (
@@ -138,43 +174,57 @@ class Database:
                 self._conn.execute(f"ALTER TABLE activities ADD COLUMN {column} {ddl}")
 
     def insert_records(self, records: Iterable[dict[str, Any]]) -> tuple[int, int]:
-        """Insert a batch. Returns (received, actually_inserted)."""
+        """Insert a batch. Returns (received, actually_inserted).
+
+        A record whose fields are the wrong shape must never fail the batch.
+        The bridge retries any 5xx forever and only deletes a spooled row once
+        the server has acknowledged it, so one unbindable value would stall the
+        queue permanently and the strap would silently stop delivering. Bad
+        values are dropped to NULL instead; `raw_hex` still carries the truth.
+        """
         rows, event_rows, received = [], [], 0
         for r in records:
             received += 1
-            rid = r.get("record_id")
-            if not rid:
+            rid = _scalar(r.get("record_id"))
+            if not rid or not isinstance(rid, str):
                 continue
             if r.get("packet") == "EVENT":
-                event_rows.append((rid, r.get("event"), r.get("event_time"),
-                                   r.get("received_at")))
+                event_rows.append((rid, _scalar(r.get("event")),
+                                   _scalar(r.get("event_time")),
+                                   _scalar(r.get("received_at"))))
                 continue
             rr = r.get("rr_intervals_ms")
-            rows.append((
-                rid, r.get("received_at"), r.get("unix"), r.get("packet"),
-                r.get("version"), r.get("heart_rate"),
-                json.dumps(rr) if rr else None,
-                r.get("gravity_x"), r.get("gravity_y"), r.get("gravity_z"),
-                r.get("skin_contact"), r.get("ppg_green"), r.get("ppg_red_ir"),
-                r.get("spo2_red"), r.get("spo2_ir"), r.get("skin_temp_raw"),
-                r.get("ambient_light"), r.get("resp_rate_raw"),
-                r.get("signal_quality"), r.get("raw_hex"),
-            ))
+            rr_json = json.dumps(rr) if isinstance(rr, (list, tuple)) and rr else None
+            rows.append((rid, ) + tuple(_scalar(r.get(f)) for f in RECORD_FIELDS[:5])
+                        + (rr_json, )
+                        + tuple(_scalar(r.get(f)) for f in RECORD_FIELDS[5:]))
 
         with self._lock:
             cur = self._conn.cursor()
             before = self._total(cur)
-            if rows:
-                cur.executemany(
-                    "INSERT OR IGNORE INTO records VALUES (" + ",".join("?" * 20) + ")", rows)
-            if event_rows:
-                cur.executemany(
-                    "INSERT OR IGNORE INTO events VALUES (?,?,?,?)", event_rows)
+            self._insert_many(
+                cur, "INSERT OR IGNORE INTO records VALUES (" + ",".join("?" * 20) + ")", rows)
+            self._insert_many(cur, "INSERT OR IGNORE INTO events VALUES (?,?,?,?)", event_rows)
             inserted = self._total(cur) - before
             cur.execute("INSERT INTO ingest_log (at, received, inserted) "
                         "VALUES (datetime('now'), ?, ?)", (received, inserted))
             self._conn.commit()
         return received, inserted
+
+    @staticmethod
+    def _insert_many(cur, sql: str, rows: list) -> None:
+        """executemany, falling back to row-at-a-time so one bad row cannot
+        take the other forty-nine down with it."""
+        if not rows:
+            return
+        try:
+            cur.executemany(sql, rows)
+        except UNBINDABLE:
+            for row in rows:
+                try:
+                    cur.execute(sql, row)
+                except UNBINDABLE:
+                    log.warning("dropping a record the database cannot store")
 
     @staticmethod
     def _total(cur) -> int:
