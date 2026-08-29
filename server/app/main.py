@@ -22,8 +22,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from .advice import suggest
 from .analytics import summarise_day
 from .db import Database
+from .insights import analyse
+from .ml import MODEL_NAME, ActivityClassifier, classify
+from .readiness import activity_learning_status, insight_learning_status
+from .segment import find_bouts
 
 BASE = Path(__file__).parent
 DB_PATH = os.environ.get("WHOOP_DB", "/data/whoop.db")
@@ -33,6 +38,8 @@ SLEEP_NEED_H = float(os.environ.get("SLEEP_NEED_HOURS", "8"))
 BASELINE_DAYS = int(os.environ.get("BASELINE_DAYS", "30"))
 TZ_OFFSET_H = float(os.environ.get("TZ_OFFSET_HOURS", "0"))
 
+from .segment import FEATURE_NAMES as _FEATURES
+
 app = FastAPI(title="Whoop Server", docs_url=None, redoc_url=None)
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 db = Database(DB_PATH)
@@ -40,6 +47,38 @@ db = Database(DB_PATH)
 
 class Batch(BaseModel):
     records: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class JournalEntry(BaseModel):
+    tags: list[str] = Field(default_factory=list)
+    amounts: dict[str, float] = Field(default_factory=dict)
+    notes: str = ""
+
+
+class ActivityEdit(BaseModel):
+    confirmed_type: str | None = None
+    start_unix: int | None = None
+    end_unix: int | None = None
+    note: str | None = None
+
+
+class ManualActivity(BaseModel):
+    start_unix: int
+    end_unix: int
+    activity_type: str
+    note: str = ""
+
+
+def _load_model() -> ActivityClassifier | None:
+    stored = db.load_model(MODEL_NAME)
+    return ActivityClassifier.from_payload(stored["payload"]) if stored else None
+
+
+def _parse_date(value: str) -> datetime:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
 
 
 def require_token(authorization: str = Header(default="")) -> None:
@@ -54,6 +93,8 @@ def require_token(authorization: str = Header(default="")) -> None:
 @app.post("/ingest")
 def ingest(batch: Batch, _: None = Depends(require_token)) -> dict[str, Any]:
     received, inserted = db.insert_records(batch.records)
+    if inserted:
+        _invalidate_cache()
     return {"ok": True, "received": received, "inserted": inserted,
             "duplicates": received - inserted}
 
@@ -70,12 +111,42 @@ def _day_bounds(day: datetime) -> tuple[int, int]:
     return start_unix, start_unix + 86400
 
 
+# Day summaries are pure functions of the stored records, so they are cached
+# and the cache is dropped whenever new records land. Without this, computing a
+# day meant recomputing its 30-day baseline from scratch, so a 90-day request
+# performed ~2800 full day-summaries and timed out in the browser.
+_CACHE_LIMIT = 2048
+_raw_cache: dict[str, dict[str, Any]] = {}
+_final_cache: dict[str, dict[str, Any]] = {}
+
+
+def _invalidate_cache() -> None:
+    _raw_cache.clear()
+    _final_cache.clear()
+
+
+def _trim_cache(cache: dict[str, Any]) -> None:
+    while len(cache) > _CACHE_LIMIT:
+        cache.pop(next(iter(cache)))
+
+
+def _raw_summary(day: datetime) -> dict[str, Any]:
+    """Day summary without baselines. Used to build the baseline series."""
+    key = day.strftime("%Y-%m-%d")
+    cached = _raw_cache.get(key)
+    if cached is None:
+        lo, hi = _day_bounds(day)
+        cached = summarise_day(db.range(lo, hi), max_hr=MAX_HR, sleep_need_h=SLEEP_NEED_H)
+        _raw_cache[key] = cached
+        _trim_cache(_raw_cache)
+    return cached
+
+
 def _baselines(before: datetime, days: int) -> tuple[float | None, float | None]:
     """Rolling personal baselines: median HRV and resting HR over `days`."""
     hrvs, rhrs = [], []
     for i in range(1, days + 1):
-        lo, hi = _day_bounds(before - timedelta(days=i))
-        s = summarise_day(db.range(lo, hi), max_hr=MAX_HR, sleep_need_h=SLEEP_NEED_H)
+        s = _raw_summary(before - timedelta(days=i))
         if not s.get("has_data"):
             continue
         if s["hrv"]["rmssd_ms"]:
@@ -87,13 +158,19 @@ def _baselines(before: datetime, days: int) -> tuple[float | None, float | None]
 
 
 def _summarise(day: datetime) -> dict[str, Any]:
+    key = day.strftime("%Y-%m-%d")
+    cached = _final_cache.get(key)
+    if cached is not None:
+        return cached
     lo, hi = _day_bounds(day)
     hrv_base, rhr_base = _baselines(day, BASELINE_DAYS)
     s = summarise_day(db.range(lo, hi), max_hr=MAX_HR, sleep_need_h=SLEEP_NEED_H,
                       hrv_baseline=hrv_base, rhr_baseline=rhr_base)
-    s["date"] = day.strftime("%Y-%m-%d")
+    s["date"] = key
     s["baselines"] = {"hrv_rmssd_ms": hrv_base, "resting_hr": rhr_base,
                       "window_days": BASELINE_DAYS}
+    _final_cache[key] = s
+    _trim_cache(_final_cache)
     return s
 
 
@@ -130,6 +207,166 @@ def api_series(date: str, field: str = "heart_rate") -> dict[str, Any]:
               for r in db.range(lo, hi) if r.get(field) is not None]
     return {"date": date, "field": field, "points": points,
             "raw_adc": field in {"skin_temp_raw", "spo2_red", "spo2_ir", "resp_rate_raw"}}
+
+
+# --- journal ----------------------------------------------------------------
+@app.get("/api/journal/{date}")
+def api_get_journal(date: str) -> dict[str, Any]:
+    _parse_date(date)
+    return db.get_journal(date) or {"date": date, "tags": [], "amounts": {}, "notes": ""}
+
+
+@app.put("/api/journal/{date}")
+def api_put_journal(date: str, entry: JournalEntry) -> dict[str, Any]:
+    _parse_date(date)
+    db.put_journal(date, entry.tags, entry.amounts, entry.notes)
+    return {"ok": True, **(db.get_journal(date) or {})}
+
+
+@app.get("/api/journal")
+def api_journal_range(days: int = Query(30, ge=1, le=365)) -> dict[str, Any]:
+    today = datetime.now(timezone.utc)
+    start = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+    return {"entries": db.journal_range(start, today.strftime("%Y-%m-%d")),
+            "known_tags": db.all_tags()}
+
+
+# --- activities -------------------------------------------------------------
+def _detect_for_day(day: datetime) -> int:
+    """Run detection for a day and store any new bouts. Idempotent."""
+    lo, hi = _day_bounds(day)
+    records = db.range(lo, hi)
+    if not records:
+        return 0
+    summary = summarise_day(records, max_hr=MAX_HR, sleep_need_h=SLEEP_NEED_H)
+    resting = summary.get("heart_rate", {}).get("resting") if summary.get("has_data") else None
+    model = _load_model()
+    found = 0
+    for bout in find_bouts(records, resting, MAX_HR):
+        label, confidence, _ = classify(bout["features"], bout.get("hint"), model)
+        db.upsert_activity(bout["start_unix"], bout["end_unix"], label,
+                           confidence, bout["features"])
+        found += 1
+    return found
+
+
+@app.get("/api/activities")
+def api_activities(date: str, detect: bool = True) -> dict[str, Any]:
+    day = _parse_date(date)
+    if detect:
+        _detect_for_day(day)
+    lo, hi = _day_bounds(day)
+    model = _load_model()
+    return {
+        "date": date,
+        "activities": db.activities_range(lo, hi),
+        "source": "model" if (model and model.weights is not None
+                              and (model.accuracy or 0) >= 0.60) else "rules",
+    }
+
+
+@app.post("/api/activities/detect")
+def api_detect(date: str) -> dict[str, Any]:
+    return {"ok": True, "date": date, "bouts": _detect_for_day(_parse_date(date))}
+
+
+@app.post("/api/activities")
+def api_add_activity(activity: ManualActivity) -> dict[str, Any]:
+    if activity.end_unix <= activity.start_unix:
+        raise HTTPException(400, "end_unix must be after start_unix")
+    aid = db.add_manual_activity(activity.start_unix, activity.end_unix,
+                                 activity.activity_type, activity.note)
+    return {"ok": True, "id": aid}
+
+
+@app.patch("/api/activities/{activity_id}")
+def api_edit_activity(activity_id: int, edit: ActivityEdit) -> dict[str, Any]:
+    if edit.start_unix is not None and edit.end_unix is not None \
+            and edit.end_unix <= edit.start_unix:
+        raise HTTPException(400, "end_unix must be after start_unix")
+    if not db.update_activity(activity_id, confirmed_type=edit.confirmed_type,
+                              start_unix=edit.start_unix, end_unix=edit.end_unix,
+                              note=edit.note):
+        raise HTTPException(404, "activity not found, deleted, or nothing to change")
+    return {"ok": True, "id": activity_id}
+
+
+@app.delete("/api/activities/{activity_id}")
+def api_delete_activity(activity_id: int) -> dict[str, Any]:
+    if not db.delete_activity(activity_id):
+        raise HTTPException(404, "activity not found")
+    return {"ok": True, "id": activity_id, "restorable": True}
+
+
+@app.post("/api/activities/{activity_id}/restore")
+def api_restore_activity(activity_id: int) -> dict[str, Any]:
+    if not db.restore_activity(activity_id):
+        raise HTTPException(404, "activity not found")
+    return {"ok": True, "id": activity_id}
+
+
+# --- learning ---------------------------------------------------------------
+@app.post("/api/model/train")
+def api_train() -> dict[str, Any]:
+    labelled = db.labelled_activities()
+    samples = [(list(a["features"].get(n, 0.0) for n in _FEATURES), a["confirmed_type"])
+               for a in labelled if a["features"]]
+    model = ActivityClassifier()
+    report = model.train(samples)
+    if report.get("trained"):
+        db.save_model(MODEL_NAME, model.to_payload(), model.n_samples, model.accuracy)
+    return report
+
+
+@app.get("/api/learning")
+def api_learning(days: int = Query(30, ge=7, le=365)) -> dict[str, Any]:
+    today = datetime.now(timezone.utc)
+    lo, _ = _day_bounds(today - timedelta(days=days))
+    _, hi = _day_bounds(today)
+
+    stored = db.load_model(MODEL_NAME)
+    detected = len(db.activities_range(lo, hi))
+    if detected == 0:
+        # Nothing detected yet means no basis for a rate estimate. Run detection
+        # over a bounded recent window so the first visit shows a real ETA.
+        for i in range(1, 8):
+            _detect_for_day(today - timedelta(days=i))
+        detected = len(db.activities_range(lo, hi))
+    activity = activity_learning_status(
+        db.labelled_activities(), detected, days,
+        stored["accuracy"] if stored else None)
+
+    entries = db.journal_range((today - timedelta(days=days)).strftime("%Y-%m-%d"),
+                               today.strftime("%Y-%m-%d"))
+    tag_counts: dict[str, int] = {}
+    for e in entries:
+        for t in e["tags"]:
+            tag_counts[t] = tag_counts.get(t, 0) + 1
+    summaries = [_summarise(today - timedelta(days=i)) for i in range(days)]
+    pairs = sum(1 for e in entries
+                if any(s["date"] == e["date"] and s.get("has_data") for s in summaries))
+    insights = insight_learning_status(pairs, tag_counts, len(entries), days)
+
+    return {"activity_recognition": activity, "lifestyle_insights": insights}
+
+
+@app.get("/api/insights")
+def api_insights(days: int = Query(60, ge=14, le=365),
+                 lag: int = Query(1, ge=0, le=3)) -> dict[str, Any]:
+    today = datetime.now(timezone.utc)
+    summaries = [_summarise(today - timedelta(days=i)) for i in range(days)]
+    entries = db.journal_range((today - timedelta(days=days)).strftime("%Y-%m-%d"),
+                               today.strftime("%Y-%m-%d"))
+    return analyse(summaries, entries, lag_days=lag)
+
+
+@app.get("/api/advice")
+def api_advice(date: str | None = None,
+               baseline_days: int = Query(30, ge=14, le=120)) -> dict[str, Any]:
+    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    today = _summarise(day)
+    history = [_summarise(day - timedelta(days=i)) for i in range(1, baseline_days + 1)]
+    return {"date": day.strftime("%Y-%m-%d"), **suggest(today, history)}
 
 
 @app.get("/", response_class=HTMLResponse)

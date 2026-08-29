@@ -52,6 +52,29 @@ counts. The strap does not send real-world units, so this bridge forwards the
 raw counts rather than inventing a calibration. If you want those in real
 units you'd have to derive your own calibration.
 
+## Learning features
+
+The server also learns from your data over time — see
+**[LEARNING.md](LEARNING.md)** for the detail and the limits.
+
+- **Activity recognition.** Workouts, walks and sleep are detected from heart
+  rate and movement, labelled by rules at first, then by a classifier trained
+  on your own corrections. You can retype, retime, delete, or add activities by
+  hand; your edits are never overwritten by re-detection.
+- **Daily journal.** Tag days with alcohol, caffeine, stress, travel, illness
+  or your own tags, plus notes.
+- **What helps and what hurts.** Compares journalled factors against the *next*
+  day's recovery, HRV, resting HR and sleep, using permutation tests with
+  bootstrap confidence intervals and Benjamini-Hochberg FDR correction. It
+  reports "no clear signal" honestly rather than inventing findings.
+- **Suggestions.** Push today / take it easy / sleep debt, plus an illness
+  signal from concordant deviations in resting HR, HRV, skin temperature and
+  respiration.
+
+Every one of these stays off until it has enough data to be trustworthy, and
+the **Learning** tab shows what is missing and roughly how long it will take —
+typically a few days for activity recognition, about two weeks for insights.
+
 ## Metrics the server computes
 
 Recovery (0–100), Strain (0–21), sleep blocks and performance, HRV (RMSSD with
@@ -188,6 +211,10 @@ safer for the band's copy but stops the offload advancing past the first chunk.
 | `windows/` | Setup and Scheduled Task installers |
 | `docker-compose.yml` | Server + cloudflared tunnel |
 
+Server internals: `analytics.py` (metrics), `segment.py` (bout detection),
+`ml.py` (activity classifier), `insights.py` (statistics), `advice.py`
+(suggestions), `readiness.py` (progress and ETAs).
+
 ## Development
 
 ```bash
@@ -195,5 +222,6 @@ pip install -e . && pip install pytest
 python -m pytest tests/ -q
 ```
 
-Protocol details are in [`PROTOCOL.md`](PROTOCOL.md); deployment in
-[`DEPLOY.md`](DEPLOY.md).
+Protocol details are in [`PROTOCOL.md`](PROTOCOL.md), deployment in
+[`DEPLOY.md`](DEPLOY.md), and the learning features in
+[`LEARNING.md`](LEARNING.md).

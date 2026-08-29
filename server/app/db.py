@@ -45,6 +45,42 @@ CREATE TABLE IF NOT EXISTS events (
     received_at TEXT
 );
 
+-- Daily journal: what you did / consumed / how you felt.
+CREATE TABLE IF NOT EXISTS journal (
+    date       TEXT PRIMARY KEY,   -- YYYY-MM-DD, local day
+    tags       TEXT NOT NULL,      -- JSON array of tag strings
+    amounts    TEXT NOT NULL,      -- JSON object, e.g. {"alcohol_units": 2}
+    notes      TEXT,
+    updated_at TEXT NOT NULL
+);
+
+-- Bouts detected from sensor data, plus any label you gave them. The
+-- confirmed_type column is what the activity classifier trains on.
+CREATE TABLE IF NOT EXISTS activities (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_unix     INTEGER NOT NULL,
+    end_unix       INTEGER NOT NULL,
+    detected_type  TEXT,
+    confirmed_type TEXT,
+    confidence     REAL,
+    features       TEXT NOT NULL,   -- JSON feature vector
+    source         TEXT NOT NULL,   -- 'auto', 'manual', or 'edited'
+    note           TEXT,
+    deleted        INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL,
+    UNIQUE(start_unix, end_unix)
+);
+CREATE INDEX IF NOT EXISTS idx_activities_time ON activities(start_unix);
+
+-- Persisted model weights, so learning survives a restart.
+CREATE TABLE IF NOT EXISTS model_state (
+    name       TEXT PRIMARY KEY,
+    payload    TEXT NOT NULL,
+    trained_at TEXT NOT NULL,
+    n_samples  INTEGER NOT NULL,
+    accuracy   REAL
+);
+
 CREATE TABLE IF NOT EXISTS ingest_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     at          TEXT NOT NULL,
@@ -69,7 +105,16 @@ class Database:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database was first created."""
+        have = {r["name"] for r in self._conn.execute("PRAGMA table_info(activities)")}
+        for column, ddl in (("note", "TEXT"),
+                            ("deleted", "INTEGER NOT NULL DEFAULT 0")):
+            if column not in have:
+                self._conn.execute(f"ALTER TABLE activities ADD COLUMN {column} {ddl}")
 
     def insert_records(self, records: Iterable[dict[str, Any]]) -> tuple[int, int]:
         """Insert a batch. Returns (received, actually_inserted)."""
@@ -143,6 +188,181 @@ class Database:
             "first_unix": c["lo"], "last_unix": c["hi"],
             "last_ingest": dict(last) if last else None,
         }
+
+    # --- journal ------------------------------------------------------------
+    def put_journal(self, date: str, tags: list[str], amounts: dict[str, float],
+                    notes: str = "") -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO journal (date, tags, amounts, notes, updated_at) "
+                "VALUES (?,?,?,?,datetime('now')) "
+                "ON CONFLICT(date) DO UPDATE SET tags=excluded.tags, "
+                "amounts=excluded.amounts, notes=excluded.notes, "
+                "updated_at=excluded.updated_at",
+                (date, json.dumps(sorted(set(tags))), json.dumps(amounts), notes))
+            self._conn.commit()
+
+    def get_journal(self, date: str) -> dict[str, Any] | None:
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM journal WHERE date=?", (date,)).fetchone()
+        return self._journal_row(r) if r else None
+
+    def journal_range(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM journal WHERE date >= ? AND date <= ? ORDER BY date",
+                (start_date, end_date)).fetchall()
+        return [self._journal_row(r) for r in rows]
+
+    @staticmethod
+    def _journal_row(r: sqlite3.Row) -> dict[str, Any]:
+        d = dict(r)
+        d["tags"] = json.loads(d["tags"] or "[]")
+        d["amounts"] = json.loads(d["amounts"] or "{}")
+        return d
+
+    def all_tags(self) -> list[str]:
+        seen: set[str] = set()
+        with self._lock:
+            for (raw,) in self._conn.execute("SELECT tags FROM journal"):
+                seen.update(json.loads(raw or "[]"))
+        return sorted(seen)
+
+    # --- activities ---------------------------------------------------------
+    def upsert_activity(self, start_unix: int, end_unix: int, detected_type: str | None,
+                        confidence: float | None, features: dict[str, float],
+                        source: str = "auto", note: str | None = None) -> int:
+        """Insert a detected bout. An existing bout keeps its user label."""
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO activities (start_unix, end_unix, detected_type, "
+                "confidence, features, source, note, created_at) "
+                "VALUES (?,?,?,?,?,?,?,datetime('now')) "
+                # A user edit or deletion wins over re-detection: only refresh
+                # rows that are still auto-owned and not deleted.
+                "ON CONFLICT(start_unix, end_unix) DO UPDATE SET "
+                "detected_type=excluded.detected_type, confidence=excluded.confidence, "
+                "features=excluded.features "
+                "WHERE activities.source='auto' AND activities.deleted=0",
+                (start_unix, end_unix, detected_type, confidence,
+                 json.dumps(features), source, note))
+            self._conn.commit()
+            if cur.lastrowid:
+                return cur.lastrowid
+            row = self._conn.execute(
+                "SELECT id FROM activities WHERE start_unix=? AND end_unix=?",
+                (start_unix, end_unix)).fetchone()
+            return row["id"]
+
+    def label_activity(self, activity_id: int, confirmed_type: str) -> bool:
+        return self.update_activity(activity_id, confirmed_type=confirmed_type)
+
+    def update_activity(self, activity_id: int, *, confirmed_type: str | None = None,
+                        start_unix: int | None = None, end_unix: int | None = None,
+                        note: str | None = None) -> bool:
+        """Edit a detected bout: retype it, correct its times, or annotate it.
+
+        Any edit marks the row 'edited', which stops re-detection overwriting it.
+        """
+        sets, args = [], []
+        if confirmed_type is not None:
+            sets.append("confirmed_type=?"); args.append(confirmed_type)
+        if start_unix is not None:
+            sets.append("start_unix=?"); args.append(start_unix)
+        if end_unix is not None:
+            sets.append("end_unix=?"); args.append(end_unix)
+        if note is not None:
+            sets.append("note=?"); args.append(note)
+        if not sets:
+            return False
+        sets.append("source=CASE WHEN source='manual' THEN 'manual' ELSE 'edited' END")
+        args.append(activity_id)
+        with self._lock:
+            cur = self._conn.execute(
+                f"UPDATE activities SET {', '.join(sets)} WHERE id=? AND deleted=0", args)
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def delete_activity(self, activity_id: int, hard: bool = False) -> bool:
+        """Remove a bout. Soft by default, so re-detection cannot bring it back."""
+        with self._lock:
+            if hard:
+                cur = self._conn.execute("DELETE FROM activities WHERE id=?", (activity_id,))
+            else:
+                cur = self._conn.execute(
+                    "UPDATE activities SET deleted=1 WHERE id=?", (activity_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def restore_activity(self, activity_id: int) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE activities SET deleted=0 WHERE id=?", (activity_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def add_manual_activity(self, start_unix: int, end_unix: int, activity_type: str,
+                            note: str = "") -> int:
+        """Log something the strap did not detect, or that happened off-wrist."""
+        with self._lock:
+            cur = self._conn.execute(
+                "INSERT INTO activities (start_unix, end_unix, detected_type, "
+                "confirmed_type, confidence, features, source, note, created_at) "
+                "VALUES (?,?,NULL,?,NULL,'{}','manual',?,datetime('now')) "
+                "ON CONFLICT(start_unix, end_unix) DO UPDATE SET "
+                "confirmed_type=excluded.confirmed_type, note=excluded.note, "
+                "source='manual', deleted=0",
+                (start_unix, end_unix, activity_type, note))
+            self._conn.commit()
+            if cur.lastrowid:
+                return cur.lastrowid
+            return self._conn.execute(
+                "SELECT id FROM activities WHERE start_unix=? AND end_unix=?",
+                (start_unix, end_unix)).fetchone()["id"]
+
+    def activities_range(self, start_unix: int, end_unix: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM activities WHERE start_unix >= ? AND start_unix < ? "
+                "AND deleted=0 ORDER BY start_unix", (start_unix, end_unix)).fetchall()
+        return [self._activity_row(r) for r in rows]
+
+    def labelled_activities(self) -> list[dict[str, Any]]:
+        """Every bout the user has confirmed -- the classifier's training set."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM activities WHERE confirmed_type IS NOT NULL "
+                "AND deleted=0 AND source != 'manual' ORDER BY start_unix").fetchall()
+        return [self._activity_row(r) for r in rows]
+
+    @staticmethod
+    def _activity_row(r: sqlite3.Row) -> dict[str, Any]:
+        d = dict(r)
+        d["features"] = json.loads(d["features"] or "{}")
+        return d
+
+    # --- models -------------------------------------------------------------
+    def save_model(self, name: str, payload: dict[str, Any], n_samples: int,
+                   accuracy: float | None = None) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO model_state (name, payload, trained_at, n_samples, accuracy) "
+                "VALUES (?,?,datetime('now'),?,?) "
+                "ON CONFLICT(name) DO UPDATE SET payload=excluded.payload, "
+                "trained_at=excluded.trained_at, n_samples=excluded.n_samples, "
+                "accuracy=excluded.accuracy",
+                (name, json.dumps(payload), n_samples, accuracy))
+            self._conn.commit()
+
+    def load_model(self, name: str) -> dict[str, Any] | None:
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM model_state WHERE name=?", (name,)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["payload"] = json.loads(d["payload"])
+        return d
 
     def close(self) -> None:
         with self._lock:

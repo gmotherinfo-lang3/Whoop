@@ -82,12 +82,30 @@ class Epoch:
 
 
 def build_epochs(records: list[dict[str, Any]]) -> list[Epoch]:
-    """Bucket records into fixed one-minute epochs."""
+    """Bucket records into fixed one-minute epochs.
+
+    Motion is the movement of the gravity vector between consecutive samples.
+    The delta is carried ACROSS epoch boundaries: the strap may emit only one
+    record per minute, and computing deltas within an epoch alone would then
+    always yield zero, silently disabling every motion-based rule downstream.
+    """
+    ordered = sorted((r for r in records if r.get("device_unix")),
+                     key=lambda r: r["device_unix"])
+
+    # Per-record motion, measured against the previous record with a vector.
+    deltas: dict[int, float] = {}
+    prev: tuple[float, float, float] | None = None
+    for r in ordered:
+        if r.get("gravity_x") is None:
+            continue
+        vec = (r["gravity_x"], r["gravity_y"], r["gravity_z"])
+        if prev is not None:
+            deltas[id(r)] = math.dist(prev, vec)
+        prev = vec
+
     buckets: dict[int, list[dict]] = {}
-    for r in records:
-        u = r.get("device_unix")
-        if u:
-            buckets.setdefault(u // EPOCH_SECONDS * EPOCH_SECONDS, []).append(r)
+    for r in ordered:
+        buckets.setdefault(r["device_unix"] // EPOCH_SECONDS * EPOCH_SECONDS, []).append(r)
 
     epochs = []
     for unix in sorted(buckets):
@@ -97,19 +115,12 @@ def build_epochs(records: list[dict[str, Any]]) -> list[Epoch]:
         for r in rows:
             rr.extend(r.get("rr_intervals_ms") or [])
 
-        # Motion: how much the gravity vector moves between consecutive samples.
-        # A still wrist holds a near-constant vector; movement perturbs it.
-        vecs = [(r["gravity_x"], r["gravity_y"], r["gravity_z"]) for r in rows
-                if r.get("gravity_x") is not None]
-        deltas = [
-            math.dist(a, b) for a, b in zip(vecs, vecs[1:])
-        ] if len(vecs) > 1 else []
-
+        moves = [deltas[id(r)] for r in rows if id(r) in deltas]
         contact = [r["skin_contact"] for r in rows if r.get("skin_contact") is not None]
         epochs.append(Epoch(
             unix=unix,
             hr=round(statistics.mean(hrs), 1) if hrs else None,
-            motion=round(statistics.mean(deltas), 4) if deltas else 0.0,
+            motion=round(statistics.mean(moves), 4) if moves else 0.0,
             on_wrist=(statistics.mean(contact) > 0.5) if contact else True,
             rr=rr,
         ))
@@ -254,7 +265,12 @@ def summarise_day(records: list[dict[str, Any]], *, max_hr: float = 190.0,
     quiet = sorted(e.hr for e in epochs if e.hr is not None and e.on_wrist)
     resting = round(quiet[max(0, int(len(quiet) * 0.05))], 1) if quiet else None
 
-    sleep_blocks = detect_sleep(epochs, resting)
+    # Threshold sleep against the rolling baseline resting HR, not today's.
+    # Using today's makes detected sleep duration move with today's physiology:
+    # a night with elevated resting HR raises the ceiling and so "detects" more
+    # sleep, manufacturing a correlation between anything that raises resting
+    # HR and apparent sleep duration. The baseline breaks that feedback loop.
+    sleep_blocks = detect_sleep(epochs, rhr_baseline or resting)
     sleep_minutes = sum(b["minutes"] for b in sleep_blocks)
     sleep_perf = round(min(100.0, 100.0 * sleep_minutes / (sleep_need_h * 60)), 1) \
         if sleep_blocks else None
@@ -269,6 +285,19 @@ def summarise_day(records: list[dict[str, Any]], *, max_hr: float = 190.0,
     hrv_rr = sleep_rr or all_rr
 
     tr = trimp(epochs, resting or 50.0, max_hr)
+
+    # Sensor channels the strap reports as raw ADC counts. They cannot be
+    # converted to real units without WHOOP's calibration, but a count compared
+    # against your OWN baseline is still meaningful, which is what the illness
+    # signal uses. Measured over the sleep window where available, since these
+    # are far more stable at rest than during the day.
+    sleep_spans = [(_unix(b["start"]), _unix(b["end"])) for b in sleep_blocks]
+    def _sensor(field: str) -> float | None:
+        vals = [r[field] for r in records
+                if r.get(field) is not None
+                and (not sleep_spans
+                     or any(lo <= (r.get("device_unix") or 0) < hi for lo, hi in sleep_spans))]
+        return round(statistics.mean(vals), 1) if len(vals) >= 10 else None
 
     return {
         "has_data": True,
@@ -289,6 +318,14 @@ def summarise_day(records: list[dict[str, Any]], *, max_hr: float = 190.0,
         "strain": {"score": strain_score(tr), "trimp": round(tr, 1), "scale_max": 21},
         "recovery": recovery_score(rmssd(hrv_rr), hrv_baseline, resting,
                                    rhr_baseline, sleep_perf),
+        "sensors": {
+            "skin_temp_raw": _sensor("skin_temp_raw"),
+            "resp_rate_raw": _sensor("resp_rate_raw"),
+            "spo2_red": _sensor("spo2_red"),
+            "spo2_ir": _sensor("spo2_ir"),
+            "measured_over": "sleep" if sleep_spans else "whole_day",
+            "units": "raw ADC counts - comparable to your own baseline only",
+        },
         "wear": {
             "on_wrist_pct": round(100.0 * sum(1 for e in epochs if e.on_wrist)
                                   / len(epochs), 1),

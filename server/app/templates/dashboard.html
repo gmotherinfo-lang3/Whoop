@@ -53,6 +53,52 @@ th{color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;le
 .spark{width:100%;height:40px;display:block;margin-top:10px}
 h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
   margin:0 0 12px;font-weight:600}
+nav{display:flex;gap:4px;margin-bottom:14px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+nav button{flex:0 0 auto;background:transparent;border:1px solid var(--line);color:var(--muted);
+  padding:7px 14px;border-radius:999px;font-size:13px;cursor:pointer;font-family:inherit}
+nav button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.sug{border-left:3px solid var(--muted);padding:11px 14px;margin-bottom:10px;
+  background:var(--panel);border-radius:0 var(--radius) var(--radius) 0;
+  border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sug.warning{border-left-color:var(--red)} .sug.notice{border-left-color:var(--yellow)}
+.sug.info{border-left-color:var(--green)}
+.sug h3{margin:0 0 5px;font-size:14.5px;font-weight:600}
+.sug p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.55}
+.sug .conf{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  margin-top:7px;display:block}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:5px 12px;
+  margin:0 6px 6px 0;font-size:12.5px;cursor:pointer;background:var(--panel);
+  color:var(--ink);font-family:inherit}
+.tag[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+input,textarea,select{background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;width:100%}
+textarea{min-height:64px;resize:vertical}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row>*{flex:1 1 auto;min-width:0}
+button.act{background:var(--accent);border:none;color:#fff;padding:8px 14px;border-radius:8px;
+  font:inherit;font-size:13px;cursor:pointer;flex:0 0 auto}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);
+  padding:6px 11px;border-radius:8px;font:inherit;font-size:12px;cursor:pointer;flex:0 0 auto}
+button.ghost:hover{color:var(--ink);border-color:var(--muted)}
+.act-row{display:flex;gap:8px;align-items:center;padding:10px 0;
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.act-row:last-child{border-bottom:none}
+.act-main{flex:1 1 190px;min-width:0}
+.act-main .t{font-weight:600;font-size:13.5px}
+.act-main .m{color:var(--muted);font-size:11.5px;margin-top:2px}
+.pill{font-size:10px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.pill.ok{color:var(--green);border-color:var(--green)}
+.progress{margin-top:10px}
+.progress .t{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);
+  margin-bottom:5px}
+.finding{padding:11px 0;border-bottom:1px solid var(--line)}
+.finding:last-child{border-bottom:none}
+.finding .h{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.finding .f{font-weight:600;font-size:13.5px}
+.finding .d{font-size:12.5px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+.sig{color:var(--green)} .sig.worse{color:var(--red)}
+.muted{color:var(--muted);font-size:12.5px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -69,6 +115,14 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--mute
     respiratory rate are raw sensor counts, not real-world units. Not medical
     measurements.
   </div>
+
+  <nav id="nav">
+    <button data-tab="today" aria-selected="true">Today</button>
+    <button data-tab="journal" aria-selected="false">Journal</button>
+    <button data-tab="activities" aria-selected="false">Activities</button>
+    <button data-tab="insights" aria-selected="false">Insights</button>
+    <button data-tab="learning" aria-selected="false">Learning</button>
+  </nav>
 
   <div id="content"><div class="empty">Loading…</div></div>
 
@@ -114,98 +168,382 @@ function metric(label, value, unit, note){
     ${note ? `<div class="note">${note}</div>` : ""}</div>`;
 }
 
-function render(data){
+const COMMON_TAGS = ["alcohol","caffeine","late_meal","late_screen","stress","travel",
+  "sick","injury","nap","meditation","sauna","cold_plunge","social","early_night"];
+const ACTIVITY_TYPES = ["run","walk","cycle","swim","lift","hiit","yoga","sport",
+  "sleep","sedentary","other"];
+
+const state = {tab:"today", date: new Date().toISOString().slice(0,10), summary:null};
+
+function today(){ return new Date().toISOString().slice(0,10); }
+// Write to a node only if it is still on the page: these fire from timers and
+// promise callbacks that can outlive the tab that created them.
+function say(sel, text){ const n = $(sel); if(n) n.textContent = text; }
+function hhmm(unix){ return new Date(unix*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  if(!r.ok){ let m; try{ m=(await r.json()).detail; }catch(_){ m="HTTP "+r.status; } throw new Error(m); }
+  return r.json();
+}
+
+// ---------------- Today ----------------
+async function renderToday(el, stale){
+  const [data, advice] = await Promise.all([
+    api("/api/summary?days=14"),
+    api("/api/advice").catch(e => ({ready:false, reason:e.message, suggestions:[]}))
+  ]);
+  if(stale()) return;
+  state.summary = data;
+  let html = "";
+
+  if(advice.ready && advice.suggestions.length){
+    html += advice.suggestions.map(s => `<div class="sug ${s.severity}">
+      <h3>${s.headline}</h3><p>${s.detail}</p>
+      <span class="conf">confidence: ${s.confidence}</span></div>`).join("");
+    html += `<div class="muted" style="margin:-2px 0 14px">${advice.disclaimer}</div>`;
+  } else if(!advice.ready){
+    html += `<div class="card"><h2>Suggestions</h2>
+      <div class="muted">Not yet — ${advice.reason}. Suggestions need enough history
+      to know what normal looks like for you.</div></div>`;
+  }
+
   const days = data.days.filter(d => d.has_data);
-  if (!days.length){
-    $("#content").innerHTML = `<div class="card"><div class="empty">
-      No data yet.<br><br>Once the laptop bridge connects to your strap and
-      forwards a sync, metrics will appear here.</div></div>`;
-    $("#updated").textContent = "no data";
+  if(!days.length){
+    el.innerHTML = html + `<div class="card"><div class="empty">No data yet.<br><br>
+      Once the laptop bridge forwards a sync, metrics appear here.</div></div>`;
     return;
   }
+  el.innerHTML = html + summaryMarkup(days, data);
+  const st = $("#stats"); if(st) st.textContent = statsLine(data.stats);
+}
 
-  const t = days[0];
-  const rec = t.recovery || {};
-  const sleepH = Math.floor((t.sleep.total_minutes || 0) / 60);
-  const sleepM = (t.sleep.total_minutes || 0) % 60;
-  const hrvTrend = data.days.map(d => d.has_data ? d.hrv.rmssd_ms : null);
-
-  let html = `
+function summaryMarkup(days, data){
+  const t = days[0], rec = t.recovery || {};
+  const sh = Math.floor((t.sleep.total_minutes||0)/60), sm = (t.sleep.total_minutes||0)%60;
+  return `
   <div class="card">
     <h2>Recovery — ${t.date}</h2>
-    <div class="ring">
-      ${ring(rec.score ?? null, rec.band)}
-      <div>
-        <div class="big ${rec.band || ""}">${rec.score ?? "–"}${rec.score != null ? "<span class='unit'>%</span>" : ""}</div>
-        <div class="sub" style="margin-top:6px">
-          ${rec.score == null ? (rec.note || "not enough data")
-            : `HRV ${fmt(rec.components.hrv)} · RHR ${fmt(rec.components.resting_hr)} · Sleep ${fmt(rec.components.sleep)}`}
-        </div>
-      </div>
-    </div>
+    <div class="ring">${ring(rec.score ?? null, rec.band)}
+      <div><div class="big ${rec.band||""}">${rec.score ?? "–"}${rec.score!=null?"<span class='unit'>%</span>":""}</div>
+      <div class="sub" style="margin-top:6px">${rec.score==null?(rec.note||"not enough data")
+        :`HRV ${fmt(rec.components.hrv)} · RHR ${fmt(rec.components.resting_hr)} · Sleep ${fmt(rec.components.sleep)}`}</div>
+    </div></div>
   </div>
-
   <div class="grid">
-    ${metric("Strain", fmt(t.strain.score, 1), "/ 21", `TRIMP ${fmt(t.strain.trimp,1)}`)}
-    ${metric("Sleep", `${sleepH}h ${sleepM}m`, "", t.sleep.performance_pct != null ? `${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h goal` : "no sleep detected")}
-    ${metric("HRV (RMSSD)", fmt(t.hrv.rmssd_ms, 1), "ms", `from ${t.hrv.source.replace("_"," ")} · ${t.hrv.beats_used} beats`)}
-    ${metric("Resting HR", fmt(t.heart_rate.resting, 1), "bpm", `avg ${fmt(t.heart_rate.avg,1)} · max ${fmt(t.heart_rate.max)}`)}
+    ${metric("Strain", fmt(t.strain.score,1), "/ 21", `TRIMP ${fmt(t.strain.trimp,1)}`)}
+    ${metric("Sleep", `${sh}h ${sm}m`, "", t.sleep.performance_pct!=null?`${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h goal`:"no sleep detected")}
+    ${metric("HRV (RMSSD)", fmt(t.hrv.rmssd_ms,1), "ms", `from ${t.hrv.source.replace("_"," ")}`)}
+    ${metric("Resting HR", fmt(t.heart_rate.resting,1), "bpm", `avg ${fmt(t.heart_rate.avg,1)} · max ${fmt(t.heart_rate.max)}`)}
   </div>
-
-  <div class="card">
-    <h2>HRV trend — last ${data.days.length} days</h2>
-    ${sparkline(hrvTrend) || `<div class="empty">Not enough days yet.</div>`}
-    <div class="sub" style="margin-top:6px">
-      Baseline ${fmt(t.baselines.hrv_rmssd_ms, 1)} ms · resting HR ${fmt(t.baselines.resting_hr, 1)} bpm
-      (${t.baselines.window_days}-day median)
-    </div>
-  </div>`;
-
-  if (t.sleep.blocks.length){
-    html += `<div class="card"><h2>Sleep blocks</h2><div class="scroll"><table>
-      <tr><th>Start</th><th>Duration</th><th>Efficiency</th><th>Avg HR</th></tr>
-      ${t.sleep.blocks.map(b => `<tr>
-        <td>${new Date(b.start).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</td>
-        <td>${Math.floor(b.minutes/60)}h ${b.minutes%60}m</td>
-        <td>${fmt(b.efficiency,1)}%</td>
-        <td>${fmt(b.avg_hr,1)}</td></tr>`).join("")}
-    </table></div></div>`;
-  }
-
-  html += `<div class="card"><h2>History</h2><div class="scroll"><table>
-    <tr><th>Date</th><th>Recovery</th><th>Strain</th><th>Sleep</th><th>HRV</th><th>RHR</th><th>Worn</th></tr>
-    ${days.map(d => `<tr>
-      <td>${d.date}</td>
-      <td class="${d.recovery.band||""}">${d.recovery.score ?? "–"}</td>
+  <div class="card"><h2>HRV trend — last ${data.days.length} days</h2>
+    ${sparkline(data.days.map(d => d.has_data ? d.hrv.rmssd_ms : null)) || `<div class="empty">Not enough days yet.</div>`}
+    <div class="sub" style="margin-top:6px">Baseline ${fmt(t.baselines.hrv_rmssd_ms,1)} ms ·
+      resting HR ${fmt(t.baselines.resting_hr,1)} bpm (${t.baselines.window_days}-day median)</div>
+  </div>
+  <div class="card"><h2>History</h2><div class="scroll"><table>
+    <tr><th>Date</th><th>Recovery</th><th>Strain</th><th>Sleep</th><th>HRV</th><th>RHR</th></tr>
+    ${days.map(d=>`<tr><td>${d.date}</td><td class="${d.recovery.band||""}">${d.recovery.score ?? "–"}</td>
       <td>${fmt(d.strain.score,1)}</td>
       <td>${Math.floor((d.sleep.total_minutes||0)/60)}h ${(d.sleep.total_minutes||0)%60}m</td>
-      <td>${fmt(d.hrv.rmssd_ms,1)}</td>
-      <td>${fmt(d.heart_rate.resting,1)}</td>
-      <td>${fmt(d.wear.on_wrist_pct)}%</td></tr>`).join("")}
+      <td>${fmt(d.hrv.rmssd_ms,1)}</td><td>${fmt(d.heart_rate.resting,1)}</td></tr>`).join("")}
   </table></div></div>`;
+}
 
-  $("#content").innerHTML = html;
-  $("#updated").textContent = "updated " + new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
-
-  const s = data.stats;
-  $("#stats").textContent =
-    `${s.records.toLocaleString()} records · ${s.events.toLocaleString()} events` +
+function statsLine(s){
+  return `${s.records.toLocaleString()} records · ${s.events.toLocaleString()} events` +
     (s.last_ingest ? ` · last sync ${s.last_ingest.at} UTC (+${s.last_ingest.inserted} new)` : " · no sync yet");
 }
 
-async function load(){
+// ---------------- Journal ----------------
+async function renderJournal(el, stale){
+  const [entry, all] = await Promise.all([
+    api(`/api/journal/${state.date}`), api("/api/journal?days=30")
+  ]);
+  if(stale()) return;
+  const known = Array.from(new Set([...COMMON_TAGS, ...(all.known_tags||[])])).sort();
+  const chosen = new Set(entry.tags || []);
+  el.innerHTML = `
+  <div class="card">
+    <h2>Journal</h2>
+    <div class="row" style="margin-bottom:14px">
+      <input type="date" id="jdate" value="${state.date}" max="${today()}" style="flex:0 0 auto;width:auto">
+      <span class="muted" id="jsaved"></span>
+    </div>
+    <div id="tags">${known.map(t=>`<button class="tag" data-tag="${t}"
+      aria-pressed="${chosen.has(t)}">${t.replace(/_/g," ")}</button>`).join("")}</div>
+    <div class="row" style="margin:10px 0">
+      <input id="newtag" placeholder="add your own tag…">
+      <button class="ghost" id="addtag">Add</button>
+    </div>
+    <textarea id="jnotes" placeholder="Anything worth remembering about today…">${entry.notes||""}</textarea>
+    <div class="row" style="margin-top:10px"><button class="act" id="jsave">Save</button></div>
+    <div class="muted" style="margin-top:12px">
+      Log ordinary days too, not just notable ones. A factor can only be tested if
+      there are days both with and without it.
+    </div>
+  </div>
+  <div class="card"><h2>Last 30 days</h2>
+    ${all.entries.length ? `<div class="scroll"><table>
+      <tr><th>Date</th><th>Tags</th><th>Notes</th></tr>
+      ${all.entries.slice().reverse().map(e=>`<tr><td>${e.date}</td>
+        <td>${(e.tags||[]).join(", ")||"–"}</td>
+        <td>${(e.notes||"").slice(0,60)||"–"}</td></tr>`).join("")}
+    </table></div>` : `<div class="muted">Nothing logged yet.</div>`}
+  </div>`;
+
+  $("#tags").onclick = e => {
+    const b = e.target.closest("[data-tag]"); if(!b) return;
+    b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
+  };
+  $("#addtag").onclick = () => {
+    const v = $("#newtag").value.trim().toLowerCase().replace(/\s+/g,"_");
+    if(!v || $(`[data-tag="${v}"]`)) return;
+    $("#tags").insertAdjacentHTML("beforeend",
+      `<button class="tag" data-tag="${v}" aria-pressed="true">${v.replace(/_/g," ")}</button>`);
+    $("#newtag").value = "";
+  };
+  $("#jdate").onchange = e => { state.date = e.target.value; render(); };
+  $("#jsave").onclick = async () => {
+    const tags = Array.from(document.querySelectorAll('[data-tag][aria-pressed="true"]'))
+      .map(b => b.dataset.tag);
+    try{
+      await api(`/api/journal/${state.date}`, {method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({tags, amounts:{}, notes: $("#jnotes").value})});
+      say("#jsaved", "saved");
+      setTimeout(()=> say("#jsaved", ""), 2000);
+    }catch(err){ say("#jsaved", "save failed: " + err.message); }
+  };
+}
+
+// ---------------- Activities ----------------
+async function renderActivities(el, stale){
+  const data = await api(`/api/activities?date=${state.date}`);
+  if(stale()) return;
+  const rows = data.activities;
+  el.innerHTML = `
+  <div class="card">
+    <h2>Activities — detected by ${data.source}</h2>
+    <div class="row" style="margin-bottom:12px">
+      <input type="date" id="adate" value="${state.date}" max="${today()}" style="flex:0 0 auto;width:auto">
+      <button class="ghost" id="redetect">Re-detect</button>
+    </div>
+    ${rows.length ? rows.map(actRow).join("") : `<div class="muted">Nothing detected for this day.</div>`}
+    <div class="muted" style="margin-top:12px">
+      Confirming or correcting these is what trains the classifier. Corrections stick —
+      re-detection will not overwrite them.
+    </div>
+  </div>
+  <div class="card"><h2>Add something manually</h2>
+    <div class="row">
+      <select id="mtype">${ACTIVITY_TYPES.map(t=>`<option>${t}</option>`).join("")}</select>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <input type="time" id="mstart" value="12:00"><input type="time" id="mend" value="13:00">
+    </div>
+    <div class="row" style="margin-top:8px"><input id="mnote" placeholder="note (optional)"></div>
+    <div class="row" style="margin-top:10px"><button class="act" id="madd">Add</button>
+      <span class="muted" id="mmsg"></span></div>
+    <div class="muted" style="margin-top:10px">
+      For things the strap could not see — a class you did off-wrist, or an event
+      you want on the record.
+    </div>
+  </div>`;
+
+  $("#adate").onchange = e => { state.date = e.target.value; render(); };
+  $("#redetect").onclick = async () => {
+    await api(`/api/activities/detect?date=${state.date}`, {method:"POST"}); render();
+  };
+  el.querySelectorAll("[data-act]").forEach(node => {
+    const id = node.dataset.act;
+    node.querySelector(".save").onclick = async () => {
+      const type = node.querySelector(".type").value;
+      const note = node.querySelector(".note").value;
+      try{
+        await api(`/api/activities/${id}`, {method:"PATCH",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({confirmed_type:type, note})});
+        render();
+      }catch(err){ alert("Could not save: " + err.message); }
+    };
+    node.querySelector(".del").onclick = async () => {
+      await api(`/api/activities/${id}`, {method:"DELETE"}); render();
+    };
+  });
+  $("#madd").onclick = async () => {
+    const base = Math.floor(new Date(state.date + "T00:00:00Z").getTime()/1000);
+    const [sh,sm] = $("#mstart").value.split(":").map(Number);
+    const [eh,em] = $("#mend").value.split(":").map(Number);
+    let start = base + sh*3600 + sm*60, end = base + eh*3600 + em*60;
+    if(end <= start) end += 86400;              // spans midnight
+    try{
+      await api("/api/activities", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({start_unix:start, end_unix:end,
+          activity_type: $("#mtype").value, note: $("#mnote").value})});
+      render();
+    }catch(err){ say("#mmsg", "failed: " + err.message); }
+  };
+}
+
+function actRow(a){
+  const mins = Math.round((a.end_unix - a.start_unix)/60);
+  const label = a.confirmed_type || a.detected_type || "unknown";
+  const opts = Array.from(new Set([...ACTIVITY_TYPES, label]))
+    .map(t=>`<option ${t===label?"selected":""}>${t}</option>`).join("");
+  return `<div class="act-row" data-act="${a.id}">
+    <div class="act-main">
+      <div class="t">${hhmm(a.start_unix)} – ${hhmm(a.end_unix)} · ${mins} min</div>
+      <div class="m">
+        ${a.confirmed_type ? `<span class="pill ok">confirmed</span>`
+          : `<span class="pill">${a.source}</span> detected “${a.detected_type||"?"}”${
+             a.confidence!=null?` · ${Math.round(a.confidence*100)}% sure`:""}`}
+        ${a.note?` · ${a.note}`:""}
+      </div>
+    </div>
+    <select class="type" style="flex:0 0 130px">${opts}</select>
+    <input class="note" placeholder="note" value="${a.note||""}" style="flex:1 1 110px">
+    <button class="ghost save">Save</button>
+    <button class="ghost del">Delete</button>
+  </div>`;
+}
+
+// ---------------- Insights ----------------
+async function renderInsights(el, stale){
+  const data = await api("/api/insights?days=90&lag=1");
+  if(stale()) return;
+  if(!data.ready){
+    el.innerHTML = `<div class="card"><h2>What helps and what hurts</h2>
+      <div class="muted">Not yet — ${data.reason}.<br><br>
+      This compares days where you logged something against days you did not, so it
+      needs a stretch of journalled days before it can say anything honest.</div></div>`;
+    return;
+  }
+  const sig = data.signals, rest = data.findings.filter(f => !f.significant);
+  el.innerHTML = `
+  <div class="card">
+    <h2>What helps and what hurts</h2>
+    ${sig.length ? sig.map(findingMarkup).join("")
+      : `<div class="muted">No factor cleared the significance bar yet. That is a real
+         result, not a failure — with ${data.pairs} days and ${data.tests_run} tests,
+         weak effects are indistinguishable from noise.</div>`}
+  </div>
+  ${rest.length ? `<div class="card"><h2>Tested, no clear signal</h2>
+    ${rest.map(findingMarkup).join("")}</div>` : ""}
+  <div class="card"><h2>Method</h2>
+    <div class="muted">${data.caveat}<br><br>
+      Each factor on one day is tested against the next day's outcome
+      (lag ${data.lag_days}d), using a permutation test with a bootstrap confidence
+      interval. q is the false-discovery-rate-adjusted p-value across all
+      ${data.tests_run} tests; a factor counts as a signal at q ≤ ${data.fdr_q}.
+      ${data.pairs} journalled days used.
+    </div>
+  </div>`;
+}
+
+function findingMarkup(f){
+  const better = f.direction === "better";
+  const sign = f.difference > 0 ? "+" : "";
+  return `<div class="finding">
+    <div class="h">
+      <span class="f">${f.factor.replace(/_/g," ")}</span>
+      <span class="${f.significant ? (better?"sig":"sig worse") : "muted"}">
+        ${sign}${f.difference} ${f.unit} ${f.outcome_label}</span>
+    </div>
+    <div class="d">95% CI [${f.ci_low}, ${f.ci_high}] · ${f.n_with} days with,
+      ${f.n_without} without · p=${f.p_value} · q=${f.q_value}</div>
+  </div>`;
+}
+
+// ---------------- Learning ----------------
+async function renderLearning(el, stale){
+  const d = await api("/api/learning?days=60");
+  if(stale()) return;
+  const a = d.activity_recognition, i = d.lifestyle_insights;
+  el.innerHTML = `
+  <div class="card">
+    <h2>Activity recognition</h2>
+    <div class="row" style="justify-content:space-between">
+      <div class="f" style="font-weight:600">${a.active ? "Learning is active" : "Using fixed rules for now"}</div>
+      <span class="pill ${a.active?"ok":""}">${a.using}</span>
+    </div>
+    ${a.active ? `<div class="muted" style="margin-top:8px">
+        Trained on ${a.labelled_total} confirmed activities across
+        ${a.ready_classes.join(", ")}. Cross-validated accuracy
+        ${Math.round((a.model_accuracy||0)*100)}%.</div>`
+      : `<div class="progress">
+          <div class="t"><span>${a.blocker}</span><span>${a.eta.text}</span></div>
+          <div class="bar"><i style="width:${Math.min(100, 100*a.labelled_total/(a.labelled_total+a.labels_needed||1))}%"></i></div>
+          <div class="muted" style="margin-top:8px">${a.labels_needed} more confirmations needed.
+            ${a.note}</div>
+        </div>`}
+    ${Object.keys(a.counts||{}).length ? `<div class="muted" style="margin-top:10px">
+      Confirmed so far: ${Object.entries(a.counts).map(([k,v])=>`${k} ${v}`).join(" · ")}</div>` : ""}
+    <div class="row" style="margin-top:12px"><button class="ghost" id="train">Retrain now</button>
+      <span class="muted" id="tmsg"></span></div>
+  </div>
+  <div class="card">
+    <h2>Lifestyle insights</h2>
+    <div class="f" style="font-weight:600">${i.active ? "Analysis is running" : "Not enough journal data yet"}</div>
+    ${i.active ? `<div class="muted" style="margin-top:8px">
+        ${i.journalled_days} journalled days. Testable factors:
+        ${i.testable_factors.join(", ")}.</div>`
+      : `<div class="progress">
+          <div class="t"><span>${i.blocker}</span><span>${i.eta.text}</span></div>
+          <div class="bar"><i style="width:${Math.min(100, 100*i.usable_pairs/(i.usable_pairs+i.pairs_needed||1))}%"></i></div>
+          <div class="muted" style="margin-top:8px">${i.note}</div>
+        </div>`}
+    ${Object.keys(i.factors_not_yet_testable||{}).length ? `<div class="muted" style="margin-top:10px">
+      Logged but not yet testable: ${Object.entries(i.factors_not_yet_testable)
+        .map(([k,v])=>`${k} (${v.needs})`).join(" · ")}</div>` : ""}
+  </div>`;
+  $("#train").onclick = async () => {
+    say("#tmsg", "training…");
+    try{
+      const r = await api("/api/model/train", {method:"POST"});
+      say("#tmsg", r.trained
+        ? `trained on ${r.n_samples}, accuracy ${Math.round(r.cv_accuracy*100)}%`
+        : r.reason);
+    }catch(err){ say("#tmsg", "failed: " + err.message); }
+    setTimeout(render, 1400);
+  };
+}
+
+// ---------------- shell ----------------
+const TABS = {today:renderToday, journal:renderJournal, activities:renderActivities,
+              insights:renderInsights, learning:renderLearning};
+
+// A slow render must never overwrite a tab the user has since switched to,
+// so every render carries a token and bails if a newer one has started.
+let renderToken = 0;
+
+async function render(){
+  const my = ++renderToken;
+  const tab = state.tab;
+  const el = $("#content");
+  const stale = () => my !== renderToken;
+  el.innerHTML = `<div class="empty">Loading…</div>`;
+  const mark = t => { const u = $("#updated"); if(u) u.textContent = t; };
   try{
-    const r = await fetch("/api/summary?days=14");
-    if(!r.ok) throw new Error("HTTP " + r.status);
-    render(await r.json());
+    await TABS[tab](el, stale);
+    if(stale()) return;
+    mark("updated " + new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
   }catch(e){
-    $("#content").innerHTML = `<div class="card"><div class="empty">
-      Could not load data: ${e.message}</div></div>`;
-    $("#updated").textContent = "error";
+    if(stale()) return;
+    el.innerHTML = `<div class="card"><div class="empty">Could not load: ${e.message}</div></div>`;
+    mark("error");
   }
 }
-load();
-setInterval(load, 60000);
+
+$("#nav").onclick = e => {
+  const b = e.target.closest("[data-tab]"); if(!b) return;
+  state.tab = b.dataset.tab;
+  document.querySelectorAll("#nav button").forEach(x =>
+    x.setAttribute("aria-selected", String(x === b)));
+  render();
+};
+
+render();
+setInterval(() => { if(state.tab === "today") render(); }, 60000);
 </script>
 </body>
 </html>
