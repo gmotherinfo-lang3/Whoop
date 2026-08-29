@@ -1,0 +1,62 @@
+# Copy to config.toml and edit. config.toml is gitignored so your endpoint
+# and token do not get committed.
+
+[device]
+# Bluetooth address of your strap, from: whoop-bridge scan
+address = ""
+
+# Live heart rate / RR intervals while connected.
+live_hr = true
+
+# Pull the strap's stored ~14 days of biometric records. This is where SpO2,
+# skin temperature, respiration, PPG and accelerometer data come from.
+backfill = true
+
+# Acknowledging a chunk is what makes the strap send the next one, and it also
+# lets the strap delete that chunk. The bridge only ever acks AFTER the records
+# are durably written to the local spool. Setting this false stops the offload
+# advancing past the first chunk.
+ack_and_trim = true
+
+# Re-request the offload this often while connected (seconds).
+backfill_interval = 900
+
+# Raw IMU (accel + gyro, 100 Hz x 6 axes) and the 437 Hz PPG waveform.
+# Very high volume -- off by default. Turn on only if you actually want it.
+include_imu = false
+
+[forward]
+# HTTPS only. Receives POSTs of {"records": [...]}.
+forward_url = ""
+# Sent as: Authorization: Bearer <token>. Prefer the WHOOP_FORWARD_TOKEN env var.
+forward_token = ""
+# Optional: adds X-Signature-SHA256 so your endpoint can verify the sender.
+hmac_secret = ""
+
+# If your server sits behind Cloudflare Access, the bridge cannot complete an
+# interactive Access login (it is not a browser). Create a service token in the
+# Cloudflare dashboard and put it here, or use the env vars
+# CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET. See DEPLOY.md.
+cf_access_client_id = ""
+cf_access_client_secret = ""
+batch_size = 50
+forward_interval = 5.0
+
+# How often to tell the server the bridge and strap are alive. This is what
+# drives the connection dot and battery readout in the dashboard.
+heartbeat_interval = 30.0
+
+# Check the server for a newer bridge, and for settings it wants to push.
+# Updates are downloaded and verified, then applied the next time the bridge
+# starts -- never mid-sync. Set auto_update = false to opt out entirely.
+auto_update = true
+update_check_interval = 3600.0
+verify_tls = true
+
+[storage]
+spool_path = "whoop-spool.db"
+spool_max_rows = 500000
+
+[logging]
+log_level = "INFO"
+log_file = ""

@@ -1,0 +1,55 @@
+services:
+  whoop:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      # Shared secret the laptop bridge posts with. Set in .env.
+      INGEST_TOKEN: ${INGEST_TOKEN:?set INGEST_TOKEN in .env}
+      # Your max heart rate. Default 190 = the 220-age rule at age 30.
+      # Strain is computed against this, so a wrong value skews it.
+      MAX_HR: ${MAX_HR:-190}
+      SLEEP_NEED_HOURS: ${SLEEP_NEED_HOURS:-8}
+      BASELINE_DAYS: ${BASELINE_DAYS:-30}
+      # Hours offset from UTC for day boundaries, e.g. -5 for US Eastern.
+      TZ_OFFSET_HOURS: ${TZ_OFFSET_HOURS:-0}
+      # Optional. Only the Fitness age view uses these, to compare your
+      # estimated VO2 max against the population median. Unset is fine.
+      USER_AGE: ${USER_AGE:-}
+      USER_SEX: ${USER_SEX:-male}
+      # Controls /setup, which hands out a pre-configured laptop bundle
+      # containing INGEST_TOKEN. "on" (default) serves it only to a request
+      # Cloudflare Access has authenticated, or to a direct LAN client.
+      # "off" disables it. "open" removes the check - do not use on the internet.
+      SETUP_DOWNLOAD: ${SETUP_DOWNLOAD:-on}
+      # Settings pushed to the laptop bridge. Behaviour only - never the strap
+      # address and never a credential.
+      BRIDGE_LOG_LEVEL: ${BRIDGE_LOG_LEVEL:-}
+      BRIDGE_BACKFILL_INTERVAL: ${BRIDGE_BACKFILL_INTERVAL:-}
+      BRIDGE_HEARTBEAT_INTERVAL: ${BRIDGE_HEARTBEAT_INTERVAL:-}
+      BRIDGE_FORWARD_INTERVAL: ${BRIDGE_FORWARD_INTERVAL:-}
+      BRIDGE_UPDATE_CHECK_INTERVAL: ${BRIDGE_UPDATE_CHECK_INTERVAL:-}
+      BRIDGE_INCLUDE_IMU: ${BRIDGE_INCLUDE_IMU:-}
+      BRIDGE_LIVE_HR: ${BRIDGE_LIVE_HR:-}
+      BRIDGE_BACKFILL: ${BRIDGE_BACKFILL:-}
+      BRIDGE_ACK_AND_TRIM: ${BRIDGE_ACK_AND_TRIM:-}
+      BRIDGE_BATCH_SIZE: ${BRIDGE_BATCH_SIZE:-}
+    volumes:
+      - whoop-data:/data
+    # Published on localhost only. Everything from outside arrives through the
+    # tunnel below, so the app is never directly exposed to the network.
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    depends_on:
+      - whoop
+
+volumes:
+  whoop-data:

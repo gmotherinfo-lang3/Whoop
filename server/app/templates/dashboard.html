@@ -1,0 +1,1816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Strap</title>
+<!-- Inline so the page never fires a 404 for a file that does not exist. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M5 19h4.2l2.1-6 3.4 10 3.3-13 2.6 9h6.4' fill='none' stroke='%2300FF87' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+/* Dark is the default look. Light is available via the toggle, and both
+   palettes are defined explicitly so nothing inherits from the host. */
+:root{
+  /* OLED dark is the identity: pitch black ground, slate cards, neon accents
+     used sparingly for data and actions. Light mode keeps the same roles with
+     steps that are legible on white - neon on white is not. */
+  --bg:#000000; --card:#232325; --raised:#2C2C2E;
+  --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.14);
+  --axis:rgba(255,255,255,.18);
+  --ink:#FFFFFF; --ink2:#A8A8AD; --muted:#8E8E93;
+  --good:#00FF87;   /* neon mint    */
+  --warn:#FFD60A;   /* amber        */
+  --crit:#FF3B30;   /* alert red    */
+  --strain:#00E5FF; /* electric cyan */
+  --sleep:#9D00FF;  /* vivid purple  */
+  --strain-dim:rgba(0,229,255,.16); --sleep-dim:rgba(157,0,255,.18);
+  --hot-dim:rgba(255,59,48,.18);
+  --track:rgba(255,255,255,.10);
+  --r:16px; --r-sm:12px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --dur:250ms;
+}
+:root[data-theme="light"]{
+  --bg:#F5F5F7; --card:#FFFFFF; --raised:#FFFFFF;
+  --line:rgba(0,0,0,.10); --line-strong:rgba(0,0,0,.16); --axis:rgba(0,0,0,.22);
+  --ink:#0B0B0B; --ink2:#3A3A3C; --muted:#6E6E73;
+  --good:#0ca30c; --warn:#B8860B; --crit:#D03B3B;
+  --strain:#0071A4; --sleep:#7C3AED;
+  --strain-dim:rgba(0,113,164,.12); --sleep-dim:rgba(124,58,237,.12);
+  --hot-dim:rgba(208,59,59,.12);
+  --track:rgba(0,0,0,.09);
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+/* SF Pro on Apple devices via -apple-system, Segoe/Roboto elsewhere. Not
+   loaded from a font CDN: this app is local-first and a webfont would add an
+   external request on every view. */
+body{margin:0;color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",
+    "Segoe UI",Roboto,system-ui,sans-serif;
+  letter-spacing:-.01em;
+  padding:max(10px,env(safe-area-inset-top)) 14px calc(96px + env(safe-area-inset-bottom));
+  -webkit-font-smoothing:antialiased}
+nav button{transition:color .2s,background .2s}
+nav button .g{transition:transform .25s cubic-bezier(.34,1.56,.64,1);
+  display:grid;place-items:center;height:22px}
+nav button[aria-selected="true"] .g{transform:translateY(-1px) scale(1.12)}
+.wrap{max-width:600px;margin:0 auto}
+
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:6px 2px 16px}
+h1{font-size:17px;margin:0;letter-spacing:-.01em;font-weight:650}
+.hdr-r{display:flex;align-items:center;gap:10px}
+.sub{color:var(--muted);font-size:11.5px}
+button.icon{background:transparent;border:1px solid var(--line);color:var(--ink2);
+  width:29px;height:29px;border-radius:50%;cursor:pointer;
+  display:grid;place-items:center;padding:0;flex:0 0 auto}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:15px;margin-bottom:10px}
+/* Light scale-down on press, per the spec's micro-feedback rule. */
+button,.chip,.arow.head,.dev{-webkit-tap-highlight-color:transparent}
+button:active,.chip:active,.arow.head:active,.dev:active{transform:scale(.98)}
+button,.chip,.arow.head,.dev{transition:transform .12s var(--ease),
+  background var(--dur) var(--ease),border-color var(--dur) var(--ease),
+  color var(--dur) var(--ease)}
+h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);
+  margin:0 0 11px;font-weight:600}
+
+/* ---- skeleton loader (pulsing lines, not a spinner) ---- */
+@keyframes shimmer{0%,100%{opacity:.30}50%{opacity:.68}}
+.sk{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:15px;margin-bottom:10px}
+.sk i{display:block;background:var(--track);border-radius:7px;
+  animation:shimmer 1.5s var(--ease) infinite}
+.sk .arc{width:132px;height:132px;border-radius:50%;margin:6px auto 16px;
+  border:9px solid var(--track);animation:shimmer 1.5s var(--ease) infinite}
+.sk-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ---- device chip ---- */
+.dev{display:flex;align-items:center;gap:6px;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:4px 8px 4px 10px;
+  cursor:pointer;font-size:11px;color:var(--ink2);transition:border-color .25s}
+.dev .pct{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);
+  display:inline-flex;align-items:center;gap:2px;font-size:11.5px;letter-spacing:.2px}
+.dev .pct svg{color:var(--good)}
+.dev .pct.dim{color:var(--muted);font-weight:400}
+.dev .strap{display:grid;place-items:center;opacity:.8}
+.dev{position:relative}
+.dev .led{position:absolute;top:2px;right:5px;width:7px;height:7px;border-radius:50%;
+  background:var(--muted);box-shadow:0 0 0 2px var(--card);transition:background .3s,box-shadow .3s}
+.dev.good .led{background:var(--good);
+  box-shadow:0 0 0 2px var(--card),0 0 7px 1px color-mix(in srgb,var(--good) 75%,transparent);
+  animation:pulse 2.4s ease-in-out infinite}
+.dev.warn .led{background:var(--warn);
+  box-shadow:0 0 0 2px var(--card),0 0 6px 1px color-mix(in srgb,var(--warn) 65%,transparent)}
+.dev.bad .led{background:var(--crit);
+  box-shadow:0 0 0 2px var(--card),0 0 6px 1px color-mix(in srgb,var(--crit) 65%,transparent)}
+.dev.good{border-color:color-mix(in srgb,var(--good) 40%,var(--line))}
+.dev.bad{border-color:color-mix(in srgb,var(--crit) 40%,var(--line))}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.devpanel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:15px 17px;margin-bottom:12px;animation:rise .3s cubic-bezier(.22,1,.36,1)}
+.devpanel .t{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14.5px}
+.devpanel p{margin:7px 0 0;color:var(--ink2);font-size:12.5px;line-height:1.55}
+.devpanel .kv{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px;font-size:11.5px;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.devpanel .kv b{color:var(--ink2);font-weight:600}
+
+/* ---- motion ----
+   Everything here is decoration on top of a layout that already works, so it
+   all switches off for anyone who asks for reduced motion. */
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.stagger>*{animation:rise .42s cubic-bezier(.22,1,.36,1) backwards}
+.quiet .stagger>*{animation:none}
+.quiet .ringarc{transition:none}
+.stagger>*:nth-child(1){animation-delay:.02s} .stagger>*:nth-child(2){animation-delay:.07s}
+.stagger>*:nth-child(3){animation-delay:.12s} .stagger>*:nth-child(4){animation-delay:.17s}
+.stagger>*:nth-child(5){animation-delay:.22s} .stagger>*:nth-child(6){animation-delay:.27s}
+.stagger>*:nth-child(n+7){animation-delay:.31s}
+/* Crisp arc, with a blurred copy of itself behind it. Glow without softening
+   the edge the eye actually reads the value from. */
+.ringarc{transition:stroke-dashoffset .95s cubic-bezier(.22,1,.36,1)}
+.ringarc.halo{filter:blur(6px)}
+.chip-press{transition:transform .12s ease,background .15s ease,border-color .15s ease}
+.chip-press:active{transform:scale(.95)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+
+/* ---- sticky ring bar ---- */
+.ringbar{position:sticky;top:0;z-index:8;background:var(--bg);margin:0 -14px 12px;
+  padding:2px 14px 10px;transition:padding .3s cubic-bezier(.4,0,.2,1),
+  box-shadow .3s,border-color .3s;border-bottom:1px solid transparent}
+.ringbar.compact{padding-top:8px;padding-bottom:6px;border-bottom-color:var(--line)}
+.datenav{display:flex;align-items:center;justify-content:center;margin-bottom:10px;
+  transition:opacity .25s,max-height .3s,margin .3s;overflow:hidden;max-height:44px}
+.datecap{display:inline-flex;align-items:center;border-radius:999px;
+  background:color-mix(in srgb,var(--raised) 55%,transparent);
+  -webkit-backdrop-filter:blur(16px) saturate(160%);
+  backdrop-filter:blur(16px) saturate(160%);
+  border:1px solid var(--line-strong);padding:2px}
+.ringbar.compact .datenav{opacity:0;max-height:0;margin-bottom:0;pointer-events:none}
+.datenav button{background:transparent;border:none;color:var(--muted);cursor:pointer;
+  font:inherit;padding:5px 10px;border-radius:var(--r-sm);display:grid;place-items:center}
+.datenav button:disabled{opacity:.28;cursor:default}
+.datenav .lbl{padding:6px 6px;font-size:11.5px;font-weight:650;letter-spacing:1.2px;
+  text-transform:uppercase;min-width:118px;text-align:center}
+.rings{display:grid;grid-template-columns:repeat(3,1fr);align-items:start;
+  padding-top:6px}
+.ringcell{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.ringcell .rg{position:relative;display:grid;place-items:center;
+  width:104px;height:104px;transform-origin:50% 0;
+  transition:transform .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1)}
+/* Scale AND shrink the box, so the collapsed bar really is 38px tall. */
+.ringbar.compact .ringcell .rg{transform:scale(.37);height:38px}
+.ringcell .rgv{position:absolute;font-size:26px;font-weight:600;letter-spacing:-.03em;
+  transition:opacity .22s;display:flex;align-items:baseline;gap:1px}
+.ringcell .rgv small{font-size:11px;color:var(--muted);font-weight:500;
+  letter-spacing:.02em}
+.ringbar.compact .ringcell .rgv{opacity:0}
+.ringcell .cap{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;
+  color:var(--muted);font-weight:600;transition:color var(--dur) var(--ease)}
+.ringcell .cap b{color:var(--ink);font-weight:600}
+.ringbar.compact .ringcell .cap{color:var(--ink2)}
+
+/* ---- health monitor strip ---- */
+.hm{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.hm .c{text-align:center;padding:9px 3px 8px;border-radius:var(--r-sm);
+  background:color-mix(in srgb,var(--ink) 4%,transparent)}
+.hm .c svg{opacity:.65;margin-bottom:5px}
+.hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
+.hm .c .v{font-size:18px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em}
+.hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
+.hm .c .v.none{color:var(--muted);font-weight:400}
+
+/* ---- detail views ---- */
+.dhead{display:flex;align-items:center;gap:10px;margin:2px 0 14px}
+.dhead button{background:transparent;border:none;color:var(--ink2);cursor:pointer;
+  padding:6px;display:grid;place-items:center;border-radius:var(--r-sm)}
+.dhead .t{flex:1 1 auto;text-align:center;font-size:11px;font-weight:650;
+  letter-spacing:1.5px;text-transform:uppercase;color:var(--ink2)}
+.dhead .sp{width:32px}
+.gauge{position:relative;display:grid;place-items:center;margin:4px auto 0}
+.gauge .rd{position:absolute;text-align:center;top:52%;transform:translateY(-50%)}
+.gauge .rd .n{font-size:46px;font-weight:700;letter-spacing:-.04em;line-height:1}
+.gauge .rd .b{font-size:12px;font-weight:650;letter-spacing:1.5px;
+  text-transform:uppercase;margin-top:4px}
+.gauge .rd .s{font-size:10.5px;color:var(--muted);margin-top:5px}
+.gends{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);
+  margin-top:-6px;padding:0 6px}
+.hmgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.hmc{background:color-mix(in srgb,var(--ink) 4%,transparent);border-radius:var(--r-sm);
+  padding:12px}
+.hmc .k{display:flex;align-items:center;gap:6px;font-size:9.5px;text-transform:uppercase;
+  letter-spacing:1.2px;color:var(--muted)}
+.hmc .v{font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:6px;
+  font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:4px}
+.hmc .v span{font-size:12px;font-weight:500;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;gap:4px;margin-top:8px;font-size:10px;
+  padding:3px 8px;border-radius:999px;font-weight:600;letter-spacing:.2px}
+.badge.ok{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+.badge.out{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.badge.na{color:var(--muted);background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.zonebar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:12px;gap:2px}
+.zonebar i{display:block}
+.tappable{cursor:pointer}
+.tappable .go{color:var(--muted);display:grid;place-items:center}
+
+/* ---- body tab ---- */
+.bigstat{font-size:44px;font-weight:700;letter-spacing:-.04em;line-height:1.05;
+  display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.bigstat span{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:0}
+.bl{padding:11px 0;border-top:1px solid var(--line)}
+.bl:first-child{border-top:none}
+.bl-k{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
+.bl-v{font-size:22px;font-weight:700;letter-spacing:-.03em;margin-top:3px;
+  font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px}
+.bl-v span{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:0}
+.bl-s{font-size:11.5px;color:var(--muted);margin-top:2px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.grid3 .bl{border-top:none;padding:0}
+.scale{position:relative;height:8px;border-radius:4px;overflow:hidden;margin-top:16px;
+  background:var(--track)}
+.scale i{position:absolute;top:0;height:8px;opacity:.5}
+.scale .mark{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;
+  background:var(--ink);box-shadow:0 0 0 2px var(--card)}
+.scalekey{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);
+  margin-top:6px}
+.nightbar{position:relative;height:8px;background:var(--track);border-radius:4px;margin-top:14px}
+.nightbar i{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;
+  background:var(--sleep);box-shadow:0 0 0 2px var(--card)}
+.nightbar .mid{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--axis)}
+
+/* ---- recent days as rows, not a spreadsheet ---- */
+.dayrow{display:flex;align-items:center;gap:12px;padding:12px 0}
+.dayrow+.dayrow{border-top:1px solid var(--line)}
+.dayrow .dot{width:8px;height:8px;flex:0 0 auto}
+.dr-main{flex:1 1 auto;min-width:0}
+.dr-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.dr-date{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.dr-score{font-size:21px;font-weight:700;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums}
+.dr-score i{font-size:11px;font-style:normal;font-weight:600;opacity:.6;margin-left:1px}
+.dr-meta{font-size:11.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* ---- aligned strain / recovery rows ---- */
+.drs{display:flex;flex-direction:column;gap:7px}
+.dr{display:grid;grid-template-columns:38px 1fr 30px 1fr 26px;align-items:center;gap:7px}
+.dr-d{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dr-b{height:8px;background:var(--track);border-radius:4px;overflow:hidden}
+.dr-b i{display:block;height:100%;border-radius:4px;transition:width .6s cubic-bezier(.22,1,.36,1)}
+.dr-v{font-size:10.5px;color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums}
+
+/* ---- section heading ---- */
+.sect{font-size:19px;font-weight:650;letter-spacing:-.015em;margin:22px 2px 12px}
+
+/* ---- hero ring ---- */
+.hero{display:flex;flex-direction:column;align-items:center;text-align:center;
+  padding:26px 18px 22px}
+.hero .figure{font-size:64px;line-height:1;font-weight:600;letter-spacing:-.03em}
+.hero .figure .pc{font-size:26px;font-weight:500;color:var(--muted);margin-left:2px}
+.hero .band{margin-top:10px;font-size:14.5px;font-weight:600;
+  display:inline-flex;align-items:center;gap:7px}
+.hero .band .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.hero .why{color:var(--muted);font-size:12.5px;margin-top:8px}
+.ringwrap{position:relative;display:grid;place-items:center}
+.ringwrap .inner{position:absolute;display:grid;place-items:center;text-align:center}
+
+/* ---- small meters ---- */
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.meter{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:16px 14px;display:flex;flex-direction:column;align-items:center;
+  text-align:center;gap:9px}
+.meter .txt{min-width:0;width:100%}
+.meter .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.meter .val{font-size:25px;font-weight:600;line-height:1.1;margin-top:3px;
+  letter-spacing:-.02em;white-space:nowrap}
+.meter .val small{font-size:13px;color:var(--muted);font-weight:400;letter-spacing:0}
+.meter .note{font-size:11px;color:var(--muted);margin-top:3px}
+
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.stat .lbl{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
+.stat .val{font-size:38px;font-weight:700;margin-top:6px;letter-spacing:-.035em;
+  line-height:1.05}
+.stat .val small{font-size:15px;color:var(--muted);font-weight:500}
+.stat .note{font-size:11px;color:var(--muted);margin-top:5px}
+.delta{font-size:11.5px;margin-top:4px;display:inline-flex;align-items:center;gap:4px}
+
+/* ---- suggestions ---- */
+.sug{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--muted);
+  border-radius:var(--r);padding:13px 15px;margin-bottom:10px}
+.sug.warning{background:linear-gradient(90deg,
+  color-mix(in srgb,var(--crit) 7%,var(--card)),var(--card) 42%)}
+.sug.warning{border-left-color:var(--crit)}
+.sug.notice{border-left-color:var(--warn)}
+.sug.info{border-left-color:var(--good)}
+.sug .top{display:flex;align-items:flex-start;gap:8px;margin-bottom:5px}
+/* Pinned to the first line of a wrapping headline rather than centred on the
+   whole block, where it drifts into the gap between lines. */
+.sug .ic{display:grid;place-items:center;flex:0 0 auto;height:21px}
+.sug.warning .ic{color:var(--crit)} .sug.notice .ic{color:var(--warn)}
+.sug.info .ic{color:var(--good)}
+.sug h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.sug p{margin:0;color:var(--ink2);font-size:13px;line-height:1.55}
+details.more{margin-top:9px}
+details.more summary{color:var(--muted);font-size:11.5px;cursor:pointer;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"▸ ";font-size:9px;vertical-align:1px}
+details.more[open] summary::before{content:"▾ "}
+details.more p{margin-top:7px;font-size:12px;color:var(--muted)}
+
+/* ---- chart ---- */
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
+.tip{position:absolute;pointer-events:none;background:var(--raised);
+  border:1px solid var(--line-strong);border-radius:10px;padding:7px 10px;
+  font-size:12px;white-space:nowrap;opacity:0;transition:opacity .12s var(--ease);
+  z-index:5;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.tip b{font-weight:600;font-variant-numeric:tabular-nums}
+.tip .d{color:var(--muted);font-size:10.5px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+/* ---- effect bars (insights) ---- */
+.grp{margin-bottom:18px}
+.grp:last-child{margin-bottom:0}
+.grp-h{font-size:11px;font-weight:600;color:var(--ink2);letter-spacing:.04em;
+  padding-bottom:6px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.grp-h span{color:var(--muted);font-weight:400}
+.eff{padding:13px 0;border-bottom:1px solid var(--line)}
+.eff:last-child{border-bottom:none}
+.eff .h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px}
+.eff .name{font-weight:600;font-size:14px}
+.eff .amt{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.eff .amt.worse{color:var(--crit)} .eff .amt.better{color:var(--strain)}
+.eff .track{position:relative;height:9px;background:var(--track);border-radius:5px}
+.eff .track .mid{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--axis)}
+.eff .track i{position:absolute;top:0;height:9px;border-radius:4px}
+.eff .track i.ci{opacity:.30;border-radius:5px}
+.eff .track i.bar{box-shadow:0 0 0 2px var(--card)}
+.eff .meta{font-size:11px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums}
+
+/* ---- lists / rows ---- */
+.arow{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid var(--line)}
+.arow:last-child{border-bottom:none}
+.arow .ic{width:38px;height:38px;border-radius:var(--r-sm);display:grid;place-items:center;
+  flex:0 0 auto;background:var(--strain-dim);color:var(--strain)}
+.arow .m{flex:1 1 auto;min-width:0}
+.arow .m .t{font-weight:700;font-size:13px}
+.arow .m .t.up{text-transform:uppercase;letter-spacing:1.2px}
+.arow .m .s{color:var(--muted);font-size:11.5px;margin-top:2px}
+.arow .go{flex:0 0 auto;color:var(--muted);display:grid;place-items:center}
+.pill{font-size:9.5px;border:1px solid var(--line);border-radius:999px;padding:2px 7px;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.06em;vertical-align:1px}
+.pill.ok{color:var(--good);border-color:var(--good)}
+
+/* ---- forms ---- */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--card);color:var(--ink2);
+  border-radius:999px;padding:9px 15px;font:inherit;font-size:13.5px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--strain);border-color:var(--strain);
+  color:#000;font-weight:600}
+input,textarea,select{background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:var(--r-sm);padding:10px 12px;font:inherit;font-size:13.5px;width:100%}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--strain)}
+textarea{min-height:78px;resize:vertical}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.row>*{flex:1 1 auto;min-width:0}
+.btn{background:var(--strain);border:none;color:#000;padding:11px 18px;
+  border-radius:var(--r-sm);font:inherit;font-size:13.5px;font-weight:650;
+  cursor:pointer;flex:0 0 auto}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink2);
+  padding:9px 14px;font-weight:400;border-radius:var(--r-sm)}
+
+/* ---- progress ---- */
+.prog{margin-top:12px}
+.prog .t{display:flex;justify-content:space-between;gap:10px;font-size:12px;
+  color:var(--ink2);margin-bottom:7px}
+.prog .t b{color:var(--ink);font-weight:600}
+.prog .bar{height:8px;background:var(--track);border-radius:5px;overflow:hidden}
+.prog .bar i{display:block;height:100%;background:var(--strain);border-radius:5px;
+  transition:width .6s var(--ease)}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:right;padding:9px 5px;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500;font-size:9.5px;text-transform:uppercase;letter-spacing:1.2px}
+tr:last-child td{border-bottom:none}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.muted{color:var(--muted);font-size:12.5px;line-height:1.6}
+.empty{color:var(--muted);text-align:center;padding:34px 14px;font-size:13.5px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+
+/* ---- bottom tab bar ---- */
+nav{position:fixed;left:14px;right:14px;bottom:calc(12px + env(safe-area-inset-bottom));
+  z-index:10;display:flex;max-width:572px;margin:0 auto;border-radius:999px;
+  background:color-mix(in srgb,var(--raised) 68%,transparent);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--line-strong);padding:8px 6px}
+@supports not (backdrop-filter:blur(1px)){ nav{background:var(--raised)} }
+nav button{flex:1 1 0;background:none;border:none;color:var(--muted);cursor:pointer;
+  font:inherit;font-size:9.5px;padding:5px 2px;display:flex;flex-direction:column;
+  align-items:center;gap:3px;border-radius:var(--r-sm);letter-spacing:.4px;
+  text-transform:uppercase;font-weight:600}
+
+nav button[aria-selected="true"]{color:var(--strain)}
+nav button:active{transform:scale(.96)}
+@media (min-width:680px){
+  nav button{flex-direction:row;font-size:11px;padding:10px;gap:7px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Strap</h1>
+    <div class="hdr-r">
+      <button class="dev" id="dev" aria-label="Device status" aria-expanded="false">
+        <span class="pct dim" id="devpct">--%</span>
+        <span class="strap" data-ic="strap" data-size="16"></span>
+        <span class="led" id="devled"></span>
+      </button>
+      <button class="icon" id="theme" title="Switch theme" aria-label="Switch theme" data-ic="theme"></button>
+    </div>
+  </header>
+  <div id="content"><div class="empty">Loading…</div></div>
+  <div class="muted" style="margin-top:16px;font-size:11px">
+    <span id="stats"></span>
+    <a href="/setup" style="color:var(--muted);margin-left:8px">Set up a laptop →</a>
+  </div>
+</div>
+
+<nav id="nav">
+  <button data-tab="today" aria-selected="true"><span class="g" data-ic="nav_today"></span>Today</button>
+  <button data-tab="journal" aria-selected="false"><span class="g" data-ic="nav_journal"></span>Journal</button>
+  <button data-tab="activities" aria-selected="false"><span class="g" data-ic="nav_activity"></span>Activity</button>
+  <button data-tab="body" aria-selected="false"><span class="g" data-ic="nav_body"></span>Body</button>
+  <button data-tab="insights" aria-selected="false"><span class="g" data-ic="nav_insights"></span>Insights</button>
+  <button data-tab="learning" aria-selected="false"><span class="g" data-ic="nav_learning"></span>Learning</button>
+</nav>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = (v,d=0) => v===null||v===undefined ? "–" : Number(v).toFixed(d);
+const state = {tab:"today", date:new Date().toISOString().slice(0,10)};
+const COMMON_TAGS = ["alcohol","caffeine","late_meal","late_screen","stress","travel",
+  "sick","injury","nap","meditation","sauna","cold_plunge","social","early_night"];
+const ACTIVITY_TYPES = ["run","walk","cycle","swim","lift","hiit","yoga","sport",
+  "sleep","sedentary","other"];
+// Thin-line icon set, 24x24, 1.5px stroke. No emoji anywhere in the UI.
+const ICONS = {
+  // --- activities ---
+  run:`<circle cx="15.5" cy="4.2" r="2.1"/><path d="M13.6 8.1 10.4 12.4l3.1 2.6-1.1 5.7"/><path d="M10.4 12.4 6.2 13.6 4.4 18"/><path d="M14.2 9.6l3.6 1.7 2.6-1.4"/>`,
+  walk:`<circle cx="13.2" cy="4.2" r="2.1"/><path d="M12.4 8.2 10 12.6l2.6 2.3-.7 5.6"/><path d="M10 12.6 7.6 15l-.5 5.2"/><path d="M12.9 9.4l3 1.6"/>`,
+  cycle:`<circle cx="5.4" cy="16.6" r="3.6"/><circle cx="18.6" cy="16.6" r="3.6"/><path d="M5.4 16.6h5.1l3.4-6.1 4.7 6.1"/><path d="M9.1 10.5h4"/><circle cx="16.4" cy="4.3" r="1.7"/><path d="M13.9 10.5 16.4 7l2.9 3.2"/>`,
+  swim:`<circle cx="17.4" cy="6.6" r="1.9"/><path d="M4 12.4l4.6-2.2 3.6 2.2 3.4-2.4"/><path d="M2.6 17.2c1.7 0 1.7 1.4 3.5 1.4s1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4 1.7-1.4 3.5-1.4 1.7 1.4 3.5 1.4"/>`,
+  lift:`<path d="M3 9.4v5.2M6 7.6v8.8M18 7.6v8.8M21 9.4v5.2M6 12h12"/>`,
+  hiit:`<path d="M12 21c3.4 0 6-2.5 6-5.7 0-3.9-3-5.4-3.4-9.3-1.6.9-2.6 2.5-2.6 4.3 0 .8-.7 1.4-1.4 1-.9-.5-1.4-1.5-1.4-2.6C7.5 10.2 6 12.4 6 15.3 6 18.5 8.6 21 12 21z"/>`,
+  yoga:`<circle cx="12" cy="4.4" r="2"/><path d="M12 6.8v5.6"/><path d="M12 9.6 7.2 13.2M12 9.6l4.8 3.6"/><path d="M4.6 18.6c1.5-2.8 4.2-4.4 7.4-4.4s5.9 1.6 7.4 4.4z"/>`,
+  sport:`<circle cx="12" cy="12" r="8.4"/><path d="M12 3.6 9.4 9.2l2.6 4.4 4.6-.6 2.6-5.4"/><path d="M9.4 9.2 3.9 10.4M12 13.6l-2.2 5.2M16.6 13l3 4.4"/>`,
+  sleep:`<path d="M20.4 14.6A8.4 8.4 0 0 1 9.4 3.6a8.4 8.4 0 1 0 11 11z"/>`,
+  sedentary:`<path d="M7.2 20V5.4"/><path d="M7.2 13.4h10.4"/><path d="M17.6 13.4V20"/><path d="M7.2 5.4c2 0 3.2 1.1 3.2 2.6"/>`,
+  activity:`<path d="M2.4 12h4.2l2.4-6 4.2 12 2.4-6h6"/>`,
+
+  // --- navigation ---
+  nav_today:`<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="3.4"/>`,
+  nav_journal:`<path d="M16.6 3.4a2.3 2.3 0 0 1 3.3 3.3L8.6 18l-4.2 1.2 1.2-4.2z"/><path d="M14.8 5.2l3.3 3.3"/>`,
+  nav_activity:`<path d="M2.4 12h4.2l2.4-6 4.2 12 2.4-6h6"/>`,
+  nav_insights:`<path d="M4 20V9.6M9.8 20V4.4M15.6 20v-7.8M21.4 20v-4.6"/>`,
+  nav_learning:`<path d="M12 2.8 22 8l-10 5.2L2 8z"/><path d="M6.4 10.6v5.2c0 1.8 2.5 3.2 5.6 3.2s5.6-1.4 5.6-3.2v-5.2"/>`,
+  nav_body:`<path d="M12 2.6a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/><path d="M12 6.8v7M5.6 9.4h12.8M12 13.8 8.4 21M12 13.8 15.6 21"/>`,
+  target:`<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="4.4"/><circle cx="12" cy="12" r=".6" fill="currentColor"/>`,
+  moon_clock:`<circle cx="12" cy="12" r="8.6"/><path d="M12 7.2V12l3.2 1.9"/>`,
+
+  // --- status ---
+  warning:`<path d="M12 3.6 2.6 20h18.8z"/><path d="M12 9.4v4.6M12 17.2v.1"/>`,
+  notice:`<circle cx="12" cy="12" r="8.6"/><path d="M12 7.6v5M12 15.8v.1"/>`,
+  info:`<circle cx="12" cy="12" r="8.6"/><path d="M8.2 12.2l2.6 2.6 5-5.6"/>`,
+
+  // --- ui ---
+  chevron_left:`<path d="M14.8 5.4 8.2 12l6.6 6.6"/>`,
+  chevron_right:`<path d="M9.2 5.4 15.8 12l-6.6 6.6"/>`,
+  theme:`<circle cx="12" cy="12" r="8.4"/><path d="M12 3.6v16.8a8.4 8.4 0 0 0 0-16.8z" fill="currentColor" stroke="none"/>`,
+  bolt:`<path d="M13.4 2.6 5 13.6h6l-.4 7.8L19 10.4h-6z"/>`,
+  search:`<circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6 20.4 20.4"/>`,
+  plus:`<path d="M12 5v14M5 12h14"/>`,
+  trash:`<path d="M4.6 6.6h14.8M9.4 6.6V4.4h5.2v2.2"/><path d="M6.6 6.6l1 12.4h8.8l1-12.4"/><path d="M10.2 10.2v5.4M13.8 10.2v5.4"/>`,
+  check:`<path d="M4.6 12.6 9.4 17.4 19.4 6.6"/>`,
+  strap:`<rect x="6.4" y="2.6" width="11.2" height="18.8" rx="4.4"/><path d="M9.2 7.6h5.6M9.2 16.4h5.6"/>`,
+  lungs:`<path d="M12 3.4v8.2"/><path d="M12 11.6c0 5-2.4 7.4-4.8 7.4-1.9 0-3.6-1.3-3.6-3.6 0-2.7 1.3-5 2.4-7.2"/><path d="M12 11.6c0 5 2.4 7.4 4.8 7.4 1.9 0 3.6-1.3 3.6-3.6 0-2.7-1.3-5-2.4-7.2"/>`,
+  droplet:`<path d="M12 3.2c3.6 4.8 6 7.2 6 10.8a6 6 0 0 1-12 0c0-3.6 2.4-6 6-10.8z"/>`,
+  heart:`<path d="M20.4 7.8a4.2 4.2 0 0 0-7.2-2.9A4.2 4.2 0 0 0 6 7.8c0 4.3 7.2 9.6 7.2 9.6"/><path d="M14.4 17.4h3l1.4-2.4 1.6 4.2 1.2-2.4"/>`,
+  thermometer:`<path d="M12 3.4a2.4 2.4 0 0 1 2.4 2.4v7.4a4.2 4.2 0 1 1-4.8 0V5.8A2.4 2.4 0 0 1 12 3.4z"/><path d="M12 8.4v6"/>`,
+};
+
+// Activity labels, including the rule classifier's own vocabulary, mapped to
+// the icon set. Anything unrecognised falls back to the generic pulse.
+const ACT_ICON = {
+  run:"run", walk:"walk", cycle:"cycle", swim:"swim", lift:"lift", hiit:"hiit",
+  yoga:"yoga", sport:"sport", sleep:"sleep", sedentary:"sedentary",
+  hard_workout:"hiit", workout:"lift", cardio:"run", other:"activity",
+};
+
+function icon(name, size = 20, extra = "") {
+  const d = ICONS[name] || ICONS.activity;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
+}
+
+function today(){ return new Date().toISOString().slice(0,10); }
+
+// Shaped like the content that is coming, so the layout does not jump.
+const SKELETONS = {
+  today: `<div class="sk"><div class="arc"></div>
+      <i style="height:13px;width:44%;margin:0 auto 9px"></i>
+      <i style="height:10px;width:66%;margin:0 auto"></i></div>
+    <div class="sk-row"><div class="sk"><i style="height:11px;width:40%"></i>
+      <i style="height:24px;width:62%;margin-top:10px"></i></div>
+      <div class="sk"><i style="height:11px;width:40%"></i>
+      <i style="height:24px;width:62%;margin-top:10px"></i></div></div>
+    <div class="sk"><i style="height:11px;width:34%"></i>
+      <i style="height:88px;margin-top:14px"></i></div>`,
+  list: `<div class="sk"><i style="height:11px;width:32%"></i>
+      <i style="height:15px;width:88%;margin-top:14px"></i>
+      <i style="height:15px;width:72%;margin-top:9px"></i>
+      <i style="height:15px;width:80%;margin-top:9px"></i></div>
+    <div class="sk"><i style="height:11px;width:26%"></i>
+      <i style="height:15px;width:66%;margin-top:14px"></i>
+      <i style="height:15px;width:78%;margin-top:9px"></i></div>`
+};
+function hhmm(u){ return new Date(u*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
+// Deferred writes can fire after the node is gone (timers, late promises).
+function say(sel,text){ const n=$(sel); if(n) n.textContent=text; }
+function esc(s){ return String(s??"").replace(/[&<>"]/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+async function api(path,opts){
+  const r = await fetch(path,opts);
+  if(!r.ok){ let m; try{ m=(await r.json()).detail; }catch(_){ m="HTTP "+r.status; } throw new Error(m); }
+  return r.json();
+}
+function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+// Static placeholders in the markup are filled from the icon set at boot.
+document.querySelectorAll("[data-ic]").forEach(n => {
+  n.insertAdjacentHTML("afterbegin", icon(n.dataset.ic, +(n.dataset.size || 20)));
+});
+
+// ---------- device status ----------
+// Polled on its own timer so the connection dot stays live no matter which tab
+// is open, and independent of whether records are flowing.
+let deviceState = null;
+
+async function pollDevice(){
+  try{ deviceState = await api("/api/device"); }
+  catch(_){ return; }
+  const chip = $("#dev"), pct = $("#devpct"), led = $("#devled");
+  if(!chip) return;
+  chip.classList.remove("good","warn","bad");
+  if(deviceState.tone !== "muted") chip.classList.add(deviceState.tone);
+  led.title = deviceState.label;
+  chip.setAttribute("aria-label", `${deviceState.label}${
+    deviceState.battery_pct!=null ? `, battery ${Math.round(deviceState.battery_pct)}%` : ""}`);
+  if(deviceState.battery_pct != null){
+    pct.textContent = `${Math.round(deviceState.battery_pct)}%`;
+    pct.classList.remove("dim");
+    pct.insertAdjacentHTML("beforeend", deviceState.charging ? icon("bolt", 12) : "");
+  } else {
+    pct.textContent = "--%"; pct.classList.add("dim");
+  }
+  const panel = $("#devpanel");
+  if(panel) panel.outerHTML = devPanel();
+}
+
+function devPanel(){
+  const d = deviceState;
+  if(!d) return `<div id="devpanel" hidden></div>`;
+  const dot = {good:css("--good"),warn:css("--warn"),bad:css("--crit")}[d.tone] || css("--muted");
+  const bits = [];
+  if(d.battery_pct != null)
+    bits.push(`<span>Battery <b>${Math.round(d.battery_pct)}%</b>${d.charging?" (charging)":""}</span>`);
+  if(d.on_wrist != null) bits.push(`<span>${d.on_wrist ? "On wrist" : "Off wrist"}</span>`);
+  if(d.queued) bits.push(`<span>Waiting to upload <b>${d.queued.toLocaleString()}</b></span>`);
+  if(d.heartbeat_age_s != null)
+    bits.push(`<span>Last check-in <b>${d.heartbeat_age_s < 90
+      ? d.heartbeat_age_s + "s" : Math.round(d.heartbeat_age_s/60) + " min"}</b> ago</span>`);
+  return `<div class="devpanel" id="devpanel">
+    <div class="t"><span class="dot" style="background:${dot}"></span>${esc(d.label)}</div>
+    <p>${esc(d.detail)}</p>
+    ${bits.length?`<div class="kv">${bits.join("")}</div>`:""}
+  </div>`;
+}
+
+// The panel lives inside #content, which a tab render replaces wholesale, so
+// the open flag is module-level and the panel is re-inserted after each render.
+let devOpen = false;
+
+function syncDevPanel(){
+  const existing = $("#devpanel");
+  if(existing) existing.remove();
+  if(devOpen) $("#content").insertAdjacentHTML("afterbegin", devPanel());
+}
+
+(function(){
+  $("#dev").onclick = () => {
+    devOpen = !devOpen;
+    $("#dev").setAttribute("aria-expanded", String(devOpen));
+    syncDevPanel();
+  };
+  pollDevice();
+  setInterval(pollDevice, 20000);
+})();
+
+// ---------- theme ----------
+(function(){
+  let saved=null; try{ saved=localStorage.getItem("strap-theme"); }catch(_){}
+  if(saved) document.documentElement.setAttribute("data-theme",saved);
+  $("#theme").onclick = () => {
+    const next = document.documentElement.getAttribute("data-theme")==="light" ? "dark":"light";
+    document.documentElement.setAttribute("data-theme",next);
+    try{ localStorage.setItem("strap-theme",next); }catch(_){}
+    render();
+  };
+})();
+
+// ---------- ring ----------
+function ringSVG(value, max, color, size, stroke){
+  const r=(size-stroke)/2, C=2*Math.PI*r;
+  const pct = value===null||value===undefined ? 0 : Math.max(0,Math.min(1,value/max));
+  // Starts empty and animates to the value once inserted (see drawRings).
+  const arc = (cls, extra) => `<circle class="ringarc${cls}" cx="${size/2}" cy="${size/2}"
+      r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
+      stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"
+      data-to="${C*(1-pct)}" transform="rotate(-90 ${size/2} ${size/2})" ${extra}/>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"
+       aria-hidden="true" overflow="visible">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
+      stroke="${css('--track')}" stroke-width="${stroke}" stroke-linecap="round"/>
+    ${arc(" halo", 'opacity="0.55"')}
+    ${arc("", "")}
+  </svg>`;
+}
+
+// Values already on screen must not re-animate on a background refresh.
+const lastRing = {};
+
+function drawRings(root, quiet){
+  const arcs = root.querySelectorAll(".ringarc[data-to]");
+  if(!arcs.length) return;
+  const apply = () => arcs.forEach(a => {
+    a.setAttribute("stroke-dashoffset", a.dataset.to);
+    delete a.dataset.to;
+  });
+  if(quiet){ apply(); return; }          // no transition class is set: snaps
+  requestAnimationFrame(() => requestAnimationFrame(apply));
+}
+const BANDS = {green:{c:"var(--good)",t:"Recovered"},yellow:{c:"var(--warn)",t:"Adequate"},
+               red:{c:"var(--crit)",t:"Low"}};
+
+// ---------- line chart with hover ----------
+function lineChart(points, opts){
+  const o = Object.assign({h:150, color:css("--strain"), unit:"", label:"Value"}, opts||{});
+  const vals = points.filter(p => p.v!==null && p.v!==undefined);
+  if(vals.length < 2) return `<div class="empty">Not enough days yet.</div>`;
+  const W=600, H=o.h, PAD={l:34,r:10,t:12,b:22};
+  const lo=Math.min(...vals.map(p=>p.v)), hi=Math.max(...vals.map(p=>p.v));
+  const span=(hi-lo)||1, y0=lo-span*0.15, y1=hi+span*0.15;
+  const X=i=>PAD.l+(i/(points.length-1))*(W-PAD.l-PAD.r);
+  const Y=v=>PAD.t+(1-(v-y0)/(y1-y0))*(H-PAD.t-PAD.b);
+  const seg=[]; let open=false; const pts=[];
+  points.forEach((p,i)=>{ if(p.v==null){open=false;return;}
+    seg.push(`${open?"L":"M"} ${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`);
+    pts.push([X(i),Y(p.v)]); open=true; });
+  const ticks=[y0+(y1-y0)*0.15, (y0+y1)/2, y1-(y1-y0)*0.15];
+  // Area under the line, fading into the background rather than filling solid.
+  const gid = "g"+Math.random().toString(36).slice(2,8);
+  const area = pts.length>1
+    ? `M ${pts[0][0].toFixed(1)} ${(H-PAD.b).toFixed(1)} `
+      + pts.map(([x,y])=>`L ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")
+      + ` L ${pts[pts.length-1][0].toFixed(1)} ${(H-PAD.b).toFixed(1)} Z`
+    : "";
+  return `<div class="chart" data-chart='${esc(JSON.stringify({points,y0,y1,PAD,W,H,unit:o.unit,label:o.label}))}'>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+         aria-label="${esc(o.label)} over time">
+      <defs>
+        <linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${o.color}" stop-opacity=".28"/>
+          <stop offset="100%" stop-color="${o.color}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${area?`<path d="${area}" fill="url(#${gid})" stroke="none"/>`:""}
+      ${ticks.map(t=>`<line x1="${PAD.l}" x2="${W-PAD.r}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}"
+        stroke="${css('--line')}" stroke-width="1"/>
+        <text x="${PAD.l-7}" y="${(Y(t)+3.5).toFixed(1)}" text-anchor="end"
+          fill="${css('--muted')}" font-size="10">${t.toFixed(0)}</text>`).join("")}
+      <path d="${seg.join(" ")}" fill="none" stroke="${o.color}" stroke-width="2"
+        stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <circle class="glow" r="9" fill="${o.color}" opacity="0" style="filter:blur(5px)"/>
+      <circle class="cur" r="4.5" fill="${o.color}" stroke="${css('--card')}" stroke-width="2" opacity="0"/>
+      <line class="cross" y1="${PAD.t}" y2="${H-PAD.b}" stroke="${css('--axis')}"
+        stroke-width="1" opacity="0"/>
+      <text x="${PAD.l}" y="${H-6}" fill="${css('--muted')}" font-size="10">${points[0].t}</text>
+      <text x="${W-PAD.r}" y="${H-6}" text-anchor="end" fill="${css('--muted')}"
+        font-size="10">${points[points.length-1].t}</text>
+      <rect class="hit" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>
+    </svg>
+    <div class="tip"></div>
+  </div>`;
+}
+
+function wireCharts(root){
+  root.querySelectorAll(".chart[data-chart]").forEach(box => {
+    const cfg = JSON.parse(box.dataset.chart);
+    const svg = box.querySelector("svg"), tip = box.querySelector(".tip");
+    const cur = box.querySelector(".cur"), cross = box.querySelector(".cross");
+    const glow = box.querySelector(".glow");
+    const {points,y0,y1,PAD,W,H} = cfg;
+    const X=i=>PAD.l+(i/(points.length-1))*(W-PAD.l-PAD.r);
+    const Y=v=>PAD.t+(1-(v-y0)/(y1-y0))*(H-PAD.t-PAD.b);
+    const move = e => {
+      const rect = svg.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      const vx = cx / rect.width * W;
+      let best=-1, bd=1e9;
+      points.forEach((p,i)=>{ if(p.v==null) return;
+        const d=Math.abs(X(i)-vx); if(d<bd){bd=d;best=i;} });
+      if(best<0) return;
+      const p=points[best];
+      cur.setAttribute("cx",X(best)); cur.setAttribute("cy",Y(p.v));
+      cur.setAttribute("opacity","1");
+      if(glow){ glow.setAttribute("cx",X(best)); glow.setAttribute("cy",Y(p.v));
+                glow.setAttribute("opacity",".75"); }
+      cross.setAttribute("x1",X(best)); cross.setAttribute("x2",X(best));
+      cross.setAttribute("opacity","1");
+      tip.innerHTML = `<b>${p.v}${cfg.unit}</b> <span class="d">${p.t}</span>`;
+      tip.style.opacity="1";
+      const px = X(best)/W*rect.width;
+      tip.style.left = Math.max(0, Math.min(rect.width-tip.offsetWidth, px-tip.offsetWidth/2))+"px";
+      tip.style.top = Math.max(0, Y(p.v)/H*rect.height - tip.offsetHeight - 10)+"px";
+    };
+    const hide = () => { tip.style.opacity="0"; cur.setAttribute("opacity","0");
+                         cross.setAttribute("opacity","0");
+                         if(glow) glow.setAttribute("opacity","0"); };
+    svg.addEventListener("mousemove",move);
+    svg.addEventListener("mouseleave",hide);
+    svg.addEventListener("touchmove",move,{passive:true});
+    svg.addEventListener("touchend",hide);
+  });
+}
+
+function hmIcon(kind){ return icon({resp:"lungs",spo2:"droplet",rhr:"heart",
+  hrv:"activity",temp:"thermometer"}[kind] || "activity", 20); }
+
+
+// The raw ADC channels have no real-world unit, so the number alone means
+// nothing. What is readable is how far it sits from your own baseline.
+function hmCell(kind, label, value, baseline, unit, higherBetter, raw){
+  if(value===null||value===undefined)
+    return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+      <div class="v none">–</div></div>`;
+  let delta = "";
+  if(baseline){
+    const pct = (value-baseline)/baseline*100;
+    if(Math.abs(pct) >= 0.4){
+      const good = higherBetter ? pct>0 : pct<0;
+      delta = `<div class="d" style="color:${good?css('--good'):css('--crit')}">
+        ${pct>0?"▲":"▼"} ${Math.abs(pct).toFixed(1)}%</div>`;
+    } else {
+      delta = `<div class="d" style="color:var(--muted)">— normal</div>`;
+    }
+  }
+  const shown = raw ? Math.round(value).toLocaleString() : fmt(value, 0);
+  return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+    <div class="v">${shown}</div>${delta}</div>`;
+}
+
+// ---------- Today ----------
+function shiftDate(days){
+  const d = new Date(state.date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  const iso = d.toISOString().slice(0,10);
+  if(iso > today()) return;
+  state.date = iso; render();
+}
+
+function dateLabel(){
+  if(state.date === today()) return "Today";
+  const d = new Date(state.date + "T00:00:00Z");
+  const y = new Date(); y.setUTCDate(y.getUTCDate()-1);
+  if(state.date === y.toISOString().slice(0,10)) return "Yesterday";
+  return d.toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
+}
+
+function ringBar(t, band){
+  const bandColor = {green:css("--good"),yellow:css("--warn"),red:css("--crit")}[t.recovery.band]
+    || css("--muted");
+  const cell = (cap, valueHTML, svg) => `<div class="ringcell">
+      <div class="rg">${svg}<div class="rgv">${valueHTML}</div></div>
+      <div class="cap">${cap}</div></div>`;
+  return `<div class="ringbar" id="ringbar">
+    <div class="datenav">
+      <div class="datecap">
+        <button id="dprev" aria-label="Previous day">${icon("chevron_left",18)}</button>
+        <span class="lbl">${dateLabel()}</span>
+        <button id="dnext" aria-label="Next day" ${state.date>=today()?"disabled":""}>${icon("chevron_right",18)}</button>
+      </div>
+    </div>
+    <div class="rings">
+      ${cell("Sleep",
+        t.sleep.performance_pct!=null?`${Math.round(t.sleep.performance_pct)}<small>%</small>`:"–",
+        ringSVG(t.sleep.performance_pct,100,css("--sleep"),96,8))}
+      ${cell(`Recovery`,
+        t.recovery.score!=null?`${t.recovery.score}<small>%</small>`:"–",
+        ringSVG(t.recovery.score,100,bandColor,96,8))}
+      ${cell("Strain",
+        t.strain.score!=null?`${fmt(t.strain.score,1)}<small>/21</small>`:"–",
+        ringSVG(t.strain.score,21,css("--strain"),96,8))}
+    </div>
+  </div>`;
+}
+
+async function renderToday(el, stale, quiet){
+  const [data, advice] = await Promise.all([
+    api("/api/summary?days=14"),
+    api(`/api/advice?date=${state.date}`).catch(e=>({ready:false,reason:e.message,suggestions:[]}))
+  ]);
+  if(stale()) return;
+  const days = data.days.filter(d=>d.has_data);
+  const t = data.days.find(d=>d.date===state.date) || days[0];
+
+  if(!t || !t.has_data){
+    el.innerHTML = (t?ringBar({sleep:{},recovery:{},strain:{}},null):"") +
+      `<div class="card"><div class="empty">No data for ${esc(dateLabel().toLowerCase())}.<br><br>
+      Once the laptop bridge forwards a sync, everything appears here.</div></div>`;
+    wireRingBar(); drawRings(el, quiet); wireOpeners(el);
+    return;
+  }
+
+  const band = BANDS[t.recovery.band] || {c:"var(--muted)", t:"Not enough data"};
+  const ICON = {warning:"warning", notice:"notice", info:"info"};
+  const sug = (advice.ready && advice.suggestions.length)
+    ? advice.suggestions.map(x=>`<div class="sug ${x.severity}">
+        <div class="top"><span class="ic">${icon(ICON[x.severity]||"notice",16)}</span><h3>${esc(x.headline)}</h3></div>
+        <p>${esc(x.detail)}</p>
+        <details class="more"><summary>confidence: ${x.confidence}</summary>
+          ${x.more?`<p>${esc(x.more)}</p>`:""}
+          <p>${esc(advice.disclaimer)}</p></details></div>`).join("")
+    : "";
+
+  const sb = t.baselines.sensors || {};
+  const sen = t.sensors || {};
+  const prev = days[days.indexOf(t)+1];
+
+  el.innerHTML = ringBar(t, band) + `
+  <div class="stagger">
+    <div class="card" style="padding:15px 18px">
+      <div class="band" style="justify-content:center;margin:0">
+        <span class="dot" style="background:${band.c}"></span>${band.t}
+        <span class="muted" style="margin-left:6px;font-weight:400">
+          ${t.recovery.score==null ? esc(t.recovery.note||"")
+            : `· HRV ${fmt(t.recovery.components.hrv)} · RHR ${fmt(t.recovery.components.resting_hr)} · Sleep ${fmt(t.recovery.components.sleep)}`}</span>
+      </div>
+    </div>
+
+    ${sug}
+
+    <div class="card tappable" data-open="health"><h2 style="display:flex;
+      align-items:center;justify-content:space-between">Health monitor
+      <span class="go">${icon("chevron_right",15)}</span></h2>
+      <div class="hm">
+        ${hmCell("resp","Resp",sen.resp_rate_raw,sb.resp_rate_raw,"",false,true)}
+        ${hmCell("spo2","SpO₂",sen.spo2_red,sb.spo2_red,"",true,true)}
+        ${hmCell("rhr","RHR",t.heart_rate.resting,t.baselines.resting_hr,"bpm",false,false)}
+        ${hmCell("hrv","HRV",t.hrv.rmssd_ms,t.baselines.hrv_rmssd_ms,"ms",true,false)}
+        ${hmCell("temp","Temp",sen.skin_temp_raw,sb.skin_temp_raw,"",false,true)}
+      </div>
+      <div class="muted" style="margin-top:10px" id="hmsum"></div>
+      <details class="more"><summary>why some of these have no units</summary>
+        <p>RHR and HRV are real measurements. Resp, SpO₂ and Temp come off the strap
+        as raw sensor counts — WHOOP converts those to % and °C in their cloud, which
+        this cannot do. The percentage under each is the honest part: how far today
+        sits from your own ${t.baselines.window_days}-day baseline. Measured over
+        ${esc((sen.measured_over||"the day").replace("_"," "))}.</p></details>
+    </div>
+
+    <div class="card tappable" data-open="stress"><h2 style="display:flex;
+      align-items:center;justify-content:space-between">Stress monitor
+      <span class="go">${icon("chevron_right",15)}</span></h2>
+      <div id="stresscard" class="muted">Loading…</div>
+    </div>
+
+    <div class="stats">
+      ${statTile("Sleep", (() => {const m=t.sleep.total_minutes||0;
+        return `${Math.floor(m/60)}<small>h </small>${m%60}<small>m</small>`;})(), "",
+        t.sleep.total_minutes, prev&&prev.sleep.total_minutes, true,
+        t.sleep.performance_pct!=null?`${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h goal`:"none detected",
+        m => m>=60 ? `${Math.floor(m/60)}h ${Math.round(m%60)}m` : `${Math.round(m)}m`)}
+      ${statTile("Strain", fmt(t.strain.score,1), "/ 21", t.strain.score,
+        prev&&prev.strain.score, true,
+        t.strain.score>=15?"hard day":t.strain.score>=9?"moderate":"light")}
+    </div>
+
+    <div class="card"><h2>HRV — last ${data.days.length} days</h2>
+      ${lineChart(data.days.slice().reverse().map(d=>({t:d.date.slice(5),
+        v:d.has_data&&d.hrv.rmssd_ms!=null?d.hrv.rmssd_ms:null})),
+        {color:css("--strain"), unit:" ms", label:"HRV RMSSD"})}
+      <div class="legend"><span><i style="background:${css('--strain')}"></i>HRV (RMSSD), ms</span></div>
+    </div>
+
+    <div class="card"><h2>Strain and recovery — last ${days.length} days</h2>
+      ${dualRows(days.slice(0,14).reverse())}
+      <div class="legend">
+        <span><i style="background:${css('--strain')}"></i>Strain, 0–21</span>
+        <span>Recovery, 0–100%:
+          <i style="background:${css('--good')}"></i>recovered
+          <i style="background:${css('--warn')}"></i>adequate
+          <i style="background:${css('--crit')}"></i>low</span></div>
+      <details class="more"><summary>why these are two rows, not one chart</summary>
+        <p>Strain runs 0–21 and recovery runs 0–100%. Drawing them on one plot needs
+        two different y-axes, which makes any crossing point look meaningful when it
+        is just an artefact of the scales chosen. Two aligned rows compare the same
+        days without inventing that.</p></details>
+    </div>
+
+    <div class="card"><h2>Recent days</h2>
+      ${days.slice(0,14).map(dayRow).join("")}
+    </div>
+
+    <details class="more"><summary>How these numbers are made</summary>
+      <p>Recovery, strain and sleep are computed on this server from raw sensor data
+      using published methods. They are not WHOOP's values and will not match the
+      official app. Not medical measurements.</p></details>
+  </div>`;
+
+  wireRingBar();
+  drawRings(el, quiet);
+  wireCharts(el);
+  wireOpeners(el);
+  say("#stats", statsLine(data.stats));
+
+  // Both summaries are secondary: fetched after the page is usable, and a
+  // failure leaves a note rather than breaking Today.
+  api(`/api/health-monitor?date=${state.date}`).then(h => {
+    const n = $("#hmsum"); if(!n || !h.summary) return;
+    n.innerHTML = h.summary.ready
+      ? `<span style="color:${h.summary.ok?css("--good"):css("--warn")}">${
+          esc(h.summary.headline)}</span> · ${esc(h.summary.detail)}`
+      : esc(h.summary.detail);
+  }).catch(()=>say("#hmsum",""));
+
+  api(`/api/stress?date=${state.date}`).then(st => {
+    const n = $("#stresscard"); if(!n) return;
+    if(!st.usable){ n.textContent = st.reason || "Not enough data yet."; return; }
+    const col = {low:css("--good"),medium:css("--warn"),high:css("--crit")}[st.band];
+    n.innerHTML = `<div style="display:flex;align-items:baseline;gap:9px">
+      <span style="font-size:30px;font-weight:700;letter-spacing:-.03em;color:${col}">
+        ${st.current.toFixed(1)}</span>
+      <span style="font-weight:650;letter-spacing:1.2px;text-transform:uppercase;
+        font-size:11px;color:${col}">${esc(st.band)}</span></div>
+    <div class="zonebar">${[["low",css("--good")],["medium",css("--warn")],["high",css("--crit")]]
+      .map(([k,c])=>st.share[k]?`<i style="width:${st.share[k]}%;background:${c}"></i>`:"").join("")}</div>
+    <div style="margin-top:8px">${esc(st.note)}</div>`;
+  }).catch(()=>{ const n=$("#stresscard"); if(n) n.textContent="Unavailable right now."; });
+}
+
+function dayRow(d){
+  const band = BANDS[d.recovery.band];
+  const colour = band ? band.c : "var(--muted)";
+  const mins = d.sleep.total_minutes || 0;
+  const when = new Date(d.date + "T00:00:00Z")
+    .toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"});
+  return `<div class="dayrow">
+    <span class="dot" style="background:${colour}"></span>
+    <div class="dr-main">
+      <div class="dr-top">
+        <span class="dr-date">${esc(when)}</span>
+        <span class="dr-score" style="color:${colour}">${d.recovery.score ?? "–"}<i>%</i></span>
+      </div>
+      <div class="dr-meta">Strain ${fmt(d.strain.score,1)} · Sleep ${Math.floor(mins/60)}h ${mins%60}m
+        · HRV ${fmt(d.hrv.rmssd_ms,0)} · RHR ${fmt(d.heart_rate.resting,0)}</div>
+    </div>
+  </div>`;
+}
+
+// Two aligned rows rather than a dual-axis chart: same days, own scale each.
+function dualRows(days){
+  if(!days.length) return `<div class="empty">Not enough days yet.</div>`;
+  const row = (d) => {
+    const st = Math.max(0,Math.min(1,(d.strain.score||0)/21))*100;
+    const rc = d.recovery.score==null ? null : Math.max(0,Math.min(1,d.recovery.score/100))*100;
+    const bc = {green:css("--good"),yellow:css("--warn"),red:css("--crit")}[d.recovery.band]||css("--muted");
+    return `<div class="dr">
+      <div class="dr-d">${d.date.slice(5)}</div>
+      <div class="dr-b"><i style="width:${st}%;background:${css('--strain')}"></i></div>
+      <div class="dr-v">${fmt(d.strain.score,1)}</div>
+      <div class="dr-b"><i style="width:${rc??0}%;background:${bc}"></i></div>
+      <div class="dr-v">${d.recovery.score ?? "–"}</div>
+    </div>`;
+  };
+  return `<div class="drs">${days.map(row).join("")}</div>`;
+}
+
+function wireRingBar(){
+  const bar = $("#ringbar");
+  if(!bar) return;
+  const prev = $("#dprev"), next = $("#dnext");
+  if(prev) prev.onclick = () => shiftDate(-1);
+  if(next) next.onclick = () => shiftDate(1);
+  const onScroll = () => bar.classList.toggle("compact", window.scrollY > 64);
+  onScroll();
+  window.removeEventListener("scroll", window.__ringScroll);
+  window.__ringScroll = onScroll;
+  window.addEventListener("scroll", onScroll, {passive:true});
+}
+
+function statTile(label, value, unit, now, before, higherBetter, note, deltaFmt){
+  let delta = "";
+  if(now!=null && before!=null){
+    const d = now-before, good = higherBetter ? d>0 : d<0;
+    if(Math.abs(d) >= 0.05){
+      const shown = deltaFmt ? deltaFmt(Math.abs(d)) : Math.abs(d).toFixed(1);
+      delta = `<div class="delta" style="color:${good?css('--good'):css('--crit')}">
+        ${d>0?"▲":"▼"} ${shown} vs yesterday</div>`;
+    }
+  }
+  return `<div class="stat"><div class="lbl">${label}</div>
+    <div class="val">${value}${unit?`<small> ${unit}</small>`:""}</div>
+    ${delta}<div class="note">${note}</div></div>`;
+}
+
+function statsLine(s){
+  return `${s.records.toLocaleString()} records · ${s.events.toLocaleString()} events` +
+    (s.last_ingest ? ` · last sync ${s.last_ingest.at} UTC` : " · no sync yet");
+}
+
+// ---------- Journal ----------
+async function renderJournal(el, stale, quiet){
+  const [entry, all, intake] = await Promise.all([
+    api(`/api/journal/${state.date}`), api("/api/journal?days=30"),
+    api(`/api/intake?date=${state.date}`).catch(()=>({entries:[],presets:{}}))
+  ]);
+  if(stale()) return;
+  const known = Array.from(new Set([...COMMON_TAGS, ...(all.known_tags||[])])).sort();
+  const chosen = new Set(entry.tags||[]);
+  el.innerHTML = `
+  <div class="card">
+    <div class="row" style="margin-bottom:16px">
+      <input type="date" id="jdate" value="${state.date}" max="${today()}" style="flex:0 0 auto;width:auto">
+      <span class="muted" id="jsaved" style="flex:1 1 auto;text-align:right"></span>
+    </div>
+    <h2>What happened today</h2>
+    <div class="chips" id="tags">${known.map(t=>`<button class="chip" data-tag="${esc(t)}"
+      aria-pressed="${chosen.has(t)}">${esc(t.replace(/_/g," "))}</button>`).join("")}</div>
+    <div class="row" style="margin:14px 0 0">
+      <input id="newtag" placeholder="add your own…">
+      <button class="btn ghost" id="addtag">Add</button>
+    </div>
+  </div>
+  <div class="card"><h2>Notes</h2>
+    <textarea id="jnotes" placeholder="Anything worth remembering…">${esc(entry.notes||"")}</textarea>
+    <div class="row" style="margin-top:12px"><button class="btn" id="jsave">Save day</button></div>
+    <div class="muted" style="margin-top:14px">Log ordinary days too. A factor can only
+      be tested if there are days both with and without it.</div>
+  </div>
+  <div class="card"><h2>Caffeine &amp; alcohol</h2>
+    <div class="muted" style="margin-top:-6px;margin-bottom:12px">
+      Log the time, not just the day — the whole point is how much is still on
+      board when you go to sleep.</div>
+    <div class="row">
+      <select id="isub" style="flex:0 0 118px">
+        <option value="caffeine">Caffeine</option>
+        <option value="alcohol">Alcohol</option>
+      </select>
+      <select id="ipreset"></select>
+      <input type="time" id="itime" style="flex:0 0 108px" value="${
+        new Date().toTimeString().slice(0,5)}">
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="iadd">Log it</button>
+      <span class="muted" id="imsg" style="text-align:right"></span>
+    </div>
+    ${intake.entries.length ? `<div style="margin-top:14px">${intake.entries.map(e=>`
+      <div class="arow" data-intake="${e.id}">
+        <div class="ic" style="background:${e.substance==="alcohol"?"var(--sleep-dim)":"var(--strain-dim)"};color:${
+          e.substance==="alcohol"?"var(--sleep)":"var(--strain)"}">
+          ${icon(e.substance==="alcohol"?"droplet":"activity",19)}</div>
+        <div class="m"><div class="t up">${esc(e.label||e.substance)}</div>
+          <div class="s">${new Date(e.at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+            · ${e.amount}${e.substance==="caffeine"?" mg":" units"}</div></div>
+        <button class="btn ghost idel">Remove</button>
+      </div>`).join("")}</div>` : `<div class="muted" style="margin-top:12px">Nothing logged.</div>`}
+  </div>
+
+  <div class="card"><h2>Last 30 days</h2>
+    ${all.entries.length ? all.entries.slice().reverse().slice(0,14).map(e=>`
+      <div class="arow"><div class="ic" style="background:var(--sleep-dim)">${icon("nav_journal",19)}</div>
+        <div class="m"><div class="t">${e.date.slice(5)}</div>
+          <div class="s">${esc((e.tags||[]).join(", ")||"nothing logged")}</div></div></div>`).join("")
+      : `<div class="muted">Nothing logged yet.</div>`}
+  </div>`;
+
+  $("#tags").onclick = e => { const b=e.target.closest("[data-tag]"); if(!b) return;
+    b.setAttribute("aria-pressed", b.getAttribute("aria-pressed")==="true"?"false":"true"); };
+  $("#addtag").onclick = () => {
+    const v=$("#newtag").value.trim().toLowerCase().replace(/\s+/g,"_");
+    if(!v) return;
+    const existing = $(`[data-tag="${CSS.escape(v)}"]`);
+    if(existing){
+      // Already in the list. Select it rather than appearing to do nothing.
+      existing.setAttribute("aria-pressed","true");
+      existing.scrollIntoView({block:"nearest", inline:"nearest"});
+    } else {
+      $("#tags").insertAdjacentHTML("beforeend",
+        `<button class="chip" data-tag="${esc(v)}" aria-pressed="true">${esc(v.replace(/_/g," "))}</button>`);
+    }
+    $("#newtag").value="";
+  };
+  // Preset list follows the substance, so amounts are a familiar thing to pick.
+  const PRESETS = intake.presets || {};
+  function fillPresets(){
+    const sub = $("#isub").value;
+    const table = sub === "alcohol" ? (PRESETS.alcohol_units||{}) : (PRESETS.caffeine_mg||{});
+    $("#ipreset").innerHTML = Object.entries(table)
+      .map(([k,v])=>`<option value="${v}">${esc(k.replace(/_/g," "))} · ${v}${
+        sub==="alcohol"?" units":" mg"}</option>`).join("");
+  }
+  $("#isub").onchange = fillPresets;
+  fillPresets();
+
+  $("#iadd").onclick = async () => {
+    const [hh,mm] = $("#itime").value.split(":").map(Number);
+    const when = new Date(state.date + "T00:00:00Z");
+    when.setUTCHours(hh, mm, 0, 0);
+    try{
+      await api("/api/intake", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({at: when.toISOString(), substance: $("#isub").value,
+          amount: parseFloat($("#ipreset").value),
+          label: $("#ipreset").selectedOptions[0].textContent.split(" · ")[0]})});
+      render();
+    }catch(err){ say("#imsg", "failed: " + err.message); }
+  };
+  el.querySelectorAll("[data-intake]").forEach(node => {
+    node.querySelector(".idel").onclick = async () => {
+      await api(`/api/intake/${node.dataset.intake}`, {method:"DELETE"}); render();
+    };
+  });
+
+  $("#jdate").onchange = e => { state.date=e.target.value; render(); };
+  $("#jsave").onclick = async () => {
+    const tags=Array.from(document.querySelectorAll('[data-tag][aria-pressed="true"]')).map(b=>b.dataset.tag);
+    try{
+      await api(`/api/journal/${state.date}`,{method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({tags,amounts:{},notes:$("#jnotes").value})});
+      markSaved();
+      say("#jsaved","saved ✓"); setTimeout(()=>say("#jsaved",""),2000);
+    }catch(err){ say("#jsaved","save failed: "+err.message); }
+  };
+}
+
+// ---------- Activities ----------
+async function renderActivities(el, stale, quiet){
+  const data = await api(`/api/activities?date=${state.date}`);
+  if(stale()) return;
+  const rows = data.activities;
+  el.innerHTML = `
+  <div class="card">
+    <div class="row" style="margin-bottom:14px">
+      <input type="date" id="adate" value="${state.date}" max="${today()}" style="flex:0 0 auto;width:auto">
+      <button class="btn ghost" id="redetect" style="flex:0 0 auto">Re-scan</button>
+    </div>
+    <h2>Detected by ${data.source}</h2>
+    ${rows.length ? rows.map(actRow).join("")
+      : `<div class="empty">Nothing detected for this day.</div>`}
+    <div class="muted" style="margin-top:14px">Tap a row to correct it. Confirming or
+      correcting is what trains the classifier — your edits are never overwritten.</div>
+  </div>
+  <div class="card"><h2>Add manually</h2>
+    <div class="row"><select id="mtype">${ACTIVITY_TYPES.map(t=>`<option>${t}</option>`).join("")}</select></div>
+    <div class="row" style="margin-top:9px">
+      <input type="time" id="mstart" value="12:00"><input type="time" id="mend" value="13:00"></div>
+    <div class="row" style="margin-top:9px"><input id="mnote" placeholder="note (optional)"></div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="madd">Add</button>
+      <span class="muted" id="mmsg" style="text-align:right"></span></div>
+    <div class="muted" style="margin-top:12px">For things the strap could not see — an
+      off-wrist class, or an event you want on the record.</div>
+  </div>`;
+
+  $("#adate").onchange = e => { state.date=e.target.value; render(); };
+  $("#redetect").onclick = async () => {
+    await api(`/api/activities/detect?date=${state.date}`,{method:"POST"}); render(); };
+  el.querySelectorAll("[data-act]").forEach(node=>{
+    const id=node.dataset.act;
+    node.querySelector(".head").onclick = () => {
+      const p=node.querySelector(".edit"); p.hidden = !p.hidden; };
+    node.querySelector(".save").onclick = async () => {
+      try{
+        await api(`/api/activities/${id}`,{method:"PATCH",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({confirmed_type:node.querySelector(".type").value,
+                               note:node.querySelector(".note").value})});
+        render();
+      }catch(err){ alert("Could not save: "+err.message); }
+    };
+    node.querySelector(".del").onclick = async () => {
+      await api(`/api/activities/${id}`,{method:"DELETE"}); render(); };
+  });
+  $("#madd").onclick = async () => {
+    const base=Math.floor(new Date(state.date+"T00:00:00Z").getTime()/1000);
+    const [sh,sm]=$("#mstart").value.split(":").map(Number);
+    const [eh,em]=$("#mend").value.split(":").map(Number);
+    let start=base+sh*3600+sm*60, end=base+eh*3600+em*60;
+    if(end<=start) end+=86400;
+    try{
+      await api("/api/activities",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({start_unix:start,end_unix:end,
+          activity_type:$("#mtype").value,note:$("#mnote").value})});
+      render();
+    }catch(err){ say("#mmsg","failed: "+err.message); }
+  };
+}
+
+function actRow(a){
+  const mins=Math.round((a.end_unix-a.start_unix)/60);
+  const label=a.confirmed_type||a.detected_type||"unknown";
+  const opts=Array.from(new Set([...ACTIVITY_TYPES,label]))
+    .map(t=>`<option ${t===label?"selected":""}>${esc(t)}</option>`).join("");
+  const family = label === "sleep" ? "sleep"
+    : ["hard_workout","hiit","run"].includes(label) ? "hot" : "strain";
+  const tint = {sleep:["var(--sleep-dim)","var(--sleep)"],
+                hot:["var(--hot-dim)","var(--crit)"],
+                strain:["var(--strain-dim)","var(--strain)"]}[family];
+  return `<div data-act="${a.id}">
+    <div class="arow head" style="cursor:pointer">
+      <div class="ic" style="background:${tint[0]};color:${tint[1]}">
+        ${icon(ACT_ICON[label] || "activity", 21)}</div>
+      <div class="m">
+        <div class="t up">${esc(label.replace(/_/g," "))}
+          ${a.confirmed_type?'<span class="pill ok">confirmed</span>':""}</div>
+        <div class="s">${hhmm(a.start_unix)} – ${hhmm(a.end_unix)} · ${mins} min${
+          a.confirmed_type?"":` · ${Math.round((a.confidence||0)*100)}% sure`}${
+          a.note?` · ${esc(a.note)}`:""}</div>
+      </div>
+      <div class="go">${icon("chevron_right",17)}</div>
+    </div>
+    <div class="edit" hidden style="padding:0 0 14px">
+      <div class="row"><select class="type">${opts}</select></div>
+      <div class="row" style="margin-top:8px">
+        <input class="note" placeholder="note" value="${esc(a.note||"")}"></div>
+      <div class="row" style="margin-top:9px">
+        <button class="btn save">Save</button>
+        <button class="btn ghost del" style="flex:0 0 auto">Delete</button></div>
+    </div>
+  </div>`;
+}
+
+// ---------- detail views ----------
+// A 0-3 arc, 240 degrees, with the band colours along the track.
+function arcGauge(value, max, size){
+  const R = size/2 - 16, C = size/2, SW = 12;
+  const START = 150, SWEEP = 240;
+  const pt = (deg, r) => [C + r*Math.cos(deg*Math.PI/180), C + r*Math.sin(deg*Math.PI/180)];
+  const seg = (a0, a1, colour, w, op) => {
+    const [x0,y0] = pt(a0, R), [x1,y1] = pt(a1, R);
+    return `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${R} ${R} 0 ${
+      (a1-a0)>180?1:0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none"
+      stroke="${colour}" stroke-width="${w}" stroke-linecap="round"
+      opacity="${op}"/>`;
+  };
+  const frac = Math.max(0, Math.min(1, (value ?? 0)/max));
+  const needle = START + SWEEP*frac;
+  const thirds = [[0,1/3,css("--good")],[1/3,2/3,css("--warn")],[2/3,1,css("--crit")]];
+  const [nx,ny] = pt(needle, R);
+  return `<svg width="${size}" height="${size*0.72}" viewBox="0 0 ${size} ${size*0.72}"
+       aria-hidden="true" overflow="visible">
+    ${thirds.map(([a,b,col]) =>
+      seg(START + SWEEP*a + (a>0?1.5:0), START + SWEEP*b - (b<1?1.5:0), col, SW, .28)).join("")}
+    ${seg(START, needle, css("--ink"), 3, 0)}
+    ${thirds.map(([a,b,col]) => {
+      const s0 = Math.max(a, 0), s1 = Math.min(b, frac);
+      return s1 > s0 ? seg(START + SWEEP*s0, START + SWEEP*s1, col, SW, 1) : "";
+    }).join("")}
+    <circle cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="7" fill="${css('--ink')}"
+      stroke="${css('--card')}" stroke-width="3"/>
+  </svg>`;
+}
+
+function detailHeader(title){
+  return `<div class="dhead">
+    <button id="dback" aria-label="Back">${icon("chevron_left",20)}</button>
+    <div class="t">${esc(title)}</div><div class="sp"></div></div>`;
+}
+
+function rangeBadge(c){
+  if(c.in_range === null)
+    return `<span class="badge na">${esc(c.state)}</span>`;
+  const unit = c.unit ? " " + c.unit : "";
+  return `<span class="badge ${c.in_range?"ok":"out"}">${
+    c.in_range ? icon("check",11) : icon("warning",11)
+  } ${c.in_range?"within":"outside"} ${c.low}–${c.high}${unit}</span>`;
+}
+
+async function renderHealthDetail(el, stale, quiet){
+  const d = await api(`/api/health-monitor?date=${state.date}`);
+  if(stale()) return;
+  const hr = d.heart_rate;
+  const ICONS = {"Resting HR":"rhr","HRV":"hrv","Respiratory rate":"lungs",
+                 "Blood oxygen":"droplet","Skin temperature":"thermometer"};
+  el.innerHTML = detailHeader("Health monitor") + `<div class="stagger">
+    <div class="card">
+      <div class="hmc .k" style="background:none;padding:0">
+        <div class="k" style="color:var(--crit)">${icon("rhr",15)} Heart rate</div>
+        <div class="v" style="font-size:38px">${hr.latest ?? "–"}<span>bpm${
+          hr.zone!=null?` · zone ${hr.zone}`:""}</span></div>
+      </div>
+      ${hr.points.length>2 ? lineChart(
+        hr.points.map(p=>({t:new Date(p.t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}), v:p.v})),
+        {color:css("--crit"), unit:" bpm", label:"Heart rate", h:120})
+        : `<div class="empty">No heart rate yet today.</div>`}
+      <div class="muted">Low ${hr.min ?? "–"} · high ${hr.max ?? "–"} bpm today</div>
+    </div>
+    <div class="hmgrid">
+      ${d.channels.map(c=>`<div class="hmc">
+        <div class="k">${icon(ICONS[c.label]||"activity",14)} ${esc(c.label)}</div>
+        <div class="v">${c.value ?? "–"}${c.unit?`<span>${esc(c.unit)}</span>`:""}</div>
+        ${rangeBadge(c)}
+        ${c.delta_pct!=null?`<div class="bl-s">${c.delta_pct>0?"+":""}${c.delta_pct}% vs your median</div>`:""}
+      </div>`).join("")}
+    </div>
+    <div class="card"><h2>About these ranges</h2>
+      <div class="muted">${esc(d.note)}</div></div>
+  </div>`;
+  wireCharts(el);
+}
+
+async function renderStressDetail(el, stale, quiet){
+  const d = await api(`/api/stress?date=${state.date}`);
+  if(stale()) return;
+  if(!d.usable){
+    el.innerHTML = detailHeader("Stress monitor") +
+      `<div class="card"><div class="empty">${esc(d.reason||"Not enough data yet.")}</div></div>`;
+    return;
+  }
+  const colour = {low:css("--good"),medium:css("--warn"),high:css("--crit")}[d.band];
+  const zones = [["low",css("--good")],["medium",css("--warn")],["high",css("--crit")]];
+  el.innerHTML = detailHeader("Stress monitor") + `<div class="stagger">
+    <div class="card" style="text-align:center">
+      <div class="gauge">${arcGauge(d.current, d.scale_max, 240)}
+        <div class="rd"><div class="n" style="color:${colour}">${d.current.toFixed(1)}</div>
+          <div class="b" style="color:${colour}">${esc(d.band)}</div>
+          <div class="s">of ${d.scale_max.toFixed(1)} · your own scale</div></div></div>
+      <div class="gends"><span>0.0</span><span>${d.scale_max.toFixed(1)}</span></div>
+    </div>
+    <div class="card"><h2>Through the day</h2>
+      ${lineChart(d.points.map(p=>({t:new Date(p.t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}), v:p.v})),
+        {color:css("--strain"), unit:"", label:"Stress", h:130})}
+      <div class="zonebar">${zones.map(([k,col])=>
+        d.share[k]?`<i style="width:${d.share[k]}%;background:${col}"></i>`:"").join("")}</div>
+      <div class="legend">${zones.map(([k,col])=>`<span><i style="background:${col}"></i>${
+        k} ${d.share[k]}% · ${Math.floor(d.minutes[k]/60)}h ${d.minutes[k]%60}m</span>`).join("")}</div>
+      <div class="muted" style="margin-top:10px">${esc(d.note)}</div>
+    </div>
+    <div class="card"><h2>How this is derived</h2>
+      <div class="muted">${esc(d.method)}</div>
+      <div class="muted" style="margin-top:8px">Average ${d.average} · peak ${d.peak}
+        · scaled against ${d.baseline_days} days of your history.</div></div>
+  </div>`;
+  wireCharts(el);
+}
+
+async function renderAgeDetail(el, stale, quiet){
+  const d = await api("/api/fitness-age?days=60");
+  if(stale()) return;
+  const e = d.estimate, a = d.age, t = d.trend, vt = d.vo2max_trend;
+  // Fitness age stops moving once the estimate is pinned to the end of the
+  // reference table. VO2 max does not, so that becomes the trend on show.
+  const useVo2 = !!(t && !t.usable && t.clamped && vt && vt.usable);
+  el.innerHTML = detailHeader("Fitness age") + `<div class="stagger">
+    ${a ? `<div class="card" style="text-align:center">
+      <div class="bigstat" style="justify-content:center;color:${css('--good')}">
+        ${a.fitness_age}<span>fitness age</span></div>
+      ${a.delta_years!=null?`<div class="muted" style="margin-top:6px;font-size:13px">
+        ${Math.abs(a.delta_years)} years ${esc(a.verdict)} than your ${a.chronological_age}
+      </div>`:`<div class="muted" style="margin-top:6px">${esc(d.needs_age||"")}</div>`}
+      <div class="muted" style="margin-top:10px">Estimated VO₂ max ${e.vo2max} ml/kg/min
+        from a heart-rate ratio of ${e.ratio}</div>
+    </div>` : `<div class="card"><div class="empty">${esc(e.reason||"Not enough data yet.")}</div></div>`}
+
+    ${(t && t.usable) || useVo2 ? (() => {
+      const shown = useVo2 ? vt : t;
+      const rate = useVo2 ? `${vt.per_month>0?"+":""}${vt.per_month} ml/kg/min per month`
+                          : `${t.years_per_month>0?"+":""}${t.years_per_month} yr/month`;
+      return `<div class="card"><h2>Your own trend</h2>
+      ${useVo2?`<div class="muted" style="margin-bottom:10px">${esc(t.reason)}</div>`:""}
+      <div class="bl"><div class="bl-k">${useVo2?"VO₂ max direction":"Direction"}</div>
+        <div class="bl-v" style="color:${shown.direction==="improving"?css("--good"):
+          shown.direction==="declining"?css("--crit"):css("--muted")}">
+          ${esc(shown.direction)}<span>${rate}</span></div>
+        <div class="bl-s">${esc(shown.note)}</div></div>
+      ${d.history && d.history.length>2 ? lineChart(
+        d.history.map(h=>({t:h.days_ago+"d", v:useVo2?h.vo2max:h.fitness_age})),
+        {color:css("--good"), unit:useVo2?" ml/kg/min":" yrs",
+         label:useVo2?"VO₂ max":"Fitness age", h:110}) : ""}
+    </div>`; })() : `<div class="card"><h2>Your own trend</h2>
+      <div class="muted">${esc((t&&t.reason)||"Not enough history yet.")}</div></div>`}
+
+    <div class="card"><h2>What this is, and is not</h2>
+      ${d.limits.map(l=>`<div class="bl"><div class="bl-s" style="margin:0">${esc(l)}</div></div>`).join("")}
+    </div>
+  </div>`;
+  wireCharts(el);
+}
+
+// ---------- Body ----------
+function statLine(label, value, sub){
+  return `<div class="bl"><div class="bl-k">${esc(label)}</div>
+    <div class="bl-v">${value}</div>${sub?`<div class="bl-s">${sub}</div>`:""}</div>`;
+}
+
+function notReady(reason){
+  return `<div class="muted" style="padding:6px 0">${esc(reason || "Not enough data yet.")}</div>`;
+}
+
+function wireOpeners(root){
+  root.querySelectorAll("[data-open]").forEach(node => {
+    node.onclick = () => openDetail(node.dataset.open);
+  });
+}
+
+async function renderBody(el, stale, quiet){
+  const d = await api(`/api/advanced?date=${state.date}&days=60`);
+  if(stale()) return;
+
+  const dfa = d.hrv_nonlinear.dfa_alpha1, se = d.hrv_nonlinear.sample_entropy;
+  const band = {aerobic:css("--good"), transitional:css("--warn"), threshold:css("--crit")};
+  const cir = d.circadian, hrr = d.recovery_velocity, ac = d.acwr;
+  const tgt = d.strain_target, eff = d.efficiency, deb = d.sleep_debt;
+
+  el.innerHTML = `<div class="stagger">
+    <div class="card tappable" data-open="age"><h2 style="display:flex;
+      align-items:center;justify-content:space-between">Fitness age
+      <span class="go">${icon("chevron_right",15)}</span></h2>
+      <div class="muted">Estimated VO₂ max, the age its population median matches,
+      and whether your own is moving.</div>
+    </div>
+
+    <div class="card"><h2>Autonomic balance</h2>
+      ${dfa.usable ? `
+        <div class="bigstat" style="color:${band[dfa.band]||css('--muted')}">
+          ${dfa.alpha1}<span>DFA α1</span></div>
+        <div class="muted" style="margin-top:4px">${esc(dfa.band)} · from
+          ${dfa.beats} clean beats over ${esc(d.hrv_nonlinear.source.replace("_"," "))}
+          · ${(dfa.artifact_rate*100).toFixed(1)}% artifacts</div>
+        <div class="scale"><i style="left:0;width:33%;background:${css('--crit')}"></i>
+          <i style="left:33%;width:25%;background:${css('--warn')}"></i>
+          <i style="left:58%;width:42%;background:${css('--good')}"></i>
+          <span class="mark" style="left:${Math.max(0,Math.min(100,dfa.alpha1/1.5*100))}%"></span></div>
+        <div class="scalekey"><span>0 · threshold</span><span>0.75</span><span>1.5 · correlated</span></div>
+      ` : notReady(dfa.reason)}
+      ${se.usable ? `<div class="bl" style="margin-top:14px">
+        <div class="bl-k">Sample entropy</div><div class="bl-v">${se.sample_entropy}</div>
+        <div class="bl-s">higher = less predictable rhythm</div></div>` : ""}
+      <details class="more"><summary>what this measures</summary>
+        <p>RMSSD says how much beat-to-beat variability there is. DFA α1 describes its
+        structure — whether the variation is correlated or random. Above 0.75 is the
+        correlated, low-intensity pattern; below 0.5 is what shows up at or past the
+        aerobic threshold. It is very sensitive to missed beats, so the artifact rate
+        is shown and a dirty window returns nothing rather than a confident number.
+        The reference bands come from chest-strap studies; a wrist optical sensor is
+        noisier.</p></details>
+    </div>
+
+    <div class="card"><h2>Circadian phase</h2>
+      ${cir.usable ? `
+        <div class="bl"><div class="bl-k">Lowest heart rate</div>
+          <div class="bl-v" style="color:${cir.aligned?css('--good'):css('--warn')}">
+            ${String(Math.floor(cir.trough_local_hour)).padStart(2,"0")}:${
+              String(Math.round((cir.trough_local_hour%1)*60)).padStart(2,"0")}
+            <span>${cir.trough_hr} bpm</span></div>
+          <div class="bl-s">${Math.round(cir.position_in_night*100)}% through the night —
+            ${esc(cir.half)} half</div></div>
+        <div class="nightbar"><i style="left:${cir.position_in_night*100}%"></i>
+          <span class="mid"></span></div>
+        <div class="scalekey"><span>asleep</span><span>midpoint</span><span>awake</span></div>
+        <div class="muted" style="margin-top:10px">${esc(cir.note)}</div>
+      ` : notReady(cir.reason)}
+    </div>
+
+    <div class="card"><h2>Recovery velocity</h2>
+      ${hrr.usable ? `
+        <div class="bigstat" style="color:${
+          hrr.hrr_60s_band==="strong"?css("--good"):hrr.hrr_60s_band==="typical"?css("--warn"):css("--crit")}">
+          −${hrr.hrr_1min}<span>bpm in 60 s</span></div>
+        <div class="grid3">
+          ${statLine("After 5 min", "−"+(hrr.hrr_5min ?? "–"), "bpm")}
+          ${statLine("After 15 min", "−"+(hrr.hrr_15min ?? "–"), "bpm")}
+          ${statLine("Back to rest", hrr.fraction_recovered_5min!=null
+            ? Math.round(hrr.fraction_recovered_5min*100)+"%" : "–", "at 5 min")}
+        </div>
+        <div class="muted" style="margin-top:10px">Measured after ${esc(hrr.after||"the day's hardest effort")},
+          peak ${hrr.peak_hr} bpm. A steeper fall means faster parasympathetic reactivation.</div>
+      ` : notReady(hrr.reason)}
+    </div>
+
+    <div class="card"><h2>Training load</h2>
+      ${ac.usable ? `
+        <div class="bigstat" style="color:${
+          ac.band==="optimal"?css("--good"):ac.band==="spike"?css("--crit"):css("--warn")}">
+          ${ac.ratio}<span>acute : chronic</span></div>
+        <div class="grid3">
+          ${statLine("Acute", ac.acute, `${ac.acute_days}-day`)}
+          ${statLine("Chronic", ac.chronic, `${ac.chronic_days}-day`)}
+          ${statLine("Band", `<span style="text-transform:capitalize">${esc(ac.band)}</span>`, "")}
+        </div>
+        <div class="muted" style="margin-top:10px">${esc(ac.note)}</div>
+        <details class="more"><summary>why no injury-risk number</summary>
+          <p>${esc(ac.caveat)}</p></details>
+      ` : notReady(ac.reason)}
+    </div>
+
+    <div class="card"><h2>Today's strain target</h2>
+      ${tgt.usable ? `
+        <div class="bigstat" style="color:${css('--strain')}">${tgt.target}
+          <span>of 21 · aim ${tgt.range[0]}–${tgt.range[1]}</span></div>
+        <div class="muted" style="margin-top:8px">${esc(tgt.note)}</div>
+      ` : notReady(tgt.reason)}
+    </div>
+
+    <div class="card"><h2>Sleep debt payback</h2>
+      ${deb.options && deb.options.length ? `
+        <div class="bigstat" style="color:${css('--sleep')}">
+          ${(deb.debt_minutes/60).toFixed(1)}<span>hours owed</span></div>
+        ${deb.options.map(o=>`<div class="bl">
+          <div class="bl-k">Over ${o.nights} nights</div>
+          <div class="bl-v">+${o.extra_minutes_per_night}<span>min/night</span></div>
+          <div class="bl-s">a ${Math.floor(o.target_minutes_per_night/60)}h
+            ${o.target_minutes_per_night%60}m target</div></div>`).join("")}
+        <details class="more"><summary>how this is modelled</summary>
+          <p>Sleep debt does not clear one-for-one, so extra sleep pays it down at
+          ${Math.round((deb.model?.payback_efficiency ?? 0.55)*100)}% of face value and
+          old debt fades slowly on its own. Those constants are a convention, not a
+          measurement — this is a model that gives you an actionable target, not
+          physiology.</p></details>
+      ` : `<div class="muted">${esc(deb.note || "No meaningful debt right now.")}</div>`}
+    </div>
+
+    <div class="card"><h2>Effort efficiency</h2>
+      ${eff.usable ? eff.activities.map(a=>`<div class="bl">
+          <div class="bl-k" style="text-transform:capitalize">${esc(a.activity)}</div>
+          <div class="bl-v" style="color:${
+            a.direction==="improving"?css("--good"):a.direction==="declining"?css("--crit"):css("--muted")}">
+            ${a.hr_change_per_week>0?"+":""}${a.hr_change_per_week}<span>bpm/week</span></div>
+          <div class="bl-s">${esc(a.note)} ${a.bouts} bouts over ${a.span_days} days.</div>
+        </div>`).join("")
+      : `<div class="muted">Nothing comparable yet.</div>`}
+      ${Object.keys(eff.skipped||{}).length?`<div class="muted" style="margin-top:10px">
+        ${Object.entries(eff.skipped).map(([k,v])=>`${esc(k)}: ${esc(v)}`).join("<br>")}</div>`:""}
+      <details class="more"><summary>about “output”</summary>
+        <p>${esc(eff.caveat||"")}</p></details>
+    </div>
+  </div>`;
+  wireOpeners(el);
+}
+
+// ---------- Insights ----------
+async function renderInsights(el, stale, quiet){
+  const data = await api("/api/insights?days=90&lag=1");
+  if(stale()) return;
+  if(!data.ready){
+    el.innerHTML = `<div class="card"><h2>What helps and what hurts</h2>
+      <div class="empty">Not yet — ${esc(data.reason)}.<br><br>
+      This compares days you logged something against days you did not, so it needs
+      a stretch of journalled days first.</div></div>`;
+    return;
+  }
+  const sig=data.signals, rest=data.findings.filter(f=>!f.significant);
+  el.innerHTML = `
+  <div class="card"><h2>What helps and what hurts</h2>
+    ${sig.length ? groups(sig)
+      : `<div class="empty">No factor cleared the bar yet. That is a real result —
+         with ${data.pairs} days and ${data.tests_run} tests, weak effects cannot be
+         told apart from noise.</div>`}
+    ${sig.length?`<div class="legend">
+      <span><i style="background:${css('--crit')}"></i>worse next day</span>
+      <span><i style="background:${css('--strain')}"></i>better next day</span>
+      <span><i style="background:${css('--axis')}"></i>95% confidence range</span></div>`:""}
+  </div>
+  ${rest.length?`<div class="card"><h2>Tested — no clear signal</h2>
+    ${groups(rest,true)}</div>`:""}
+  <div class="card"><h2>Method</h2>
+    <div class="muted">${esc(data.caveat)}</div>
+    <details class="more"><summary>How the test works</summary>
+      <p>Each factor on one day is tested against the next day's outcome
+      (lag ${data.lag_days}d) with a permutation test and a bootstrap confidence
+      interval. q is the false-discovery-rate-adjusted p-value across all
+      ${data.tests_run} tests; a factor counts as a signal at q ≤ ${data.fdr_q}.
+      ${data.pairs} journalled days used. Bars are scaled within each outcome —
+      points, bpm, minutes and ms are different units and never share an axis.</p>
+    </details>
+  </div>`;
+}
+
+// Group by outcome so each measure gets its own scale. Recovery points and sleep
+// minutes on one shared axis would render a real 27-point effect as a sliver.
+function groups(findings, dim){
+  const by = {};
+  findings.forEach(f => { (by[f.outcome] = by[f.outcome] || []).push(f); });
+  return Object.values(by).map(list => {
+    const scale = Math.max(1e-6, ...list.map(f => Math.max(
+      Math.abs(f.difference), Math.abs(f.ci_low), Math.abs(f.ci_high))));
+    return `<div class="grp">
+      <div class="grp-h">${esc(list[0].outcome_label)} <span>${esc(list[0].unit)}</span></div>
+      ${list.map(f => effBar(f, scale, dim)).join("")}
+    </div>`;
+  }).join("");
+}
+
+function effBar(f, scale, dim){
+  const worse = f.direction==="worse";
+  const color = dim ? css("--muted") : (worse ? css("--crit") : css("--strain"));
+  const half=50, pos=v => half + (v/scale)*half*0.92;   // 0.92 keeps ends off the edge
+  const d=pos(f.difference), lo=pos(Math.min(f.ci_low,f.ci_high)), hi=pos(Math.max(f.ci_low,f.ci_high));
+  const barL=Math.min(half,d), barW=Math.abs(d-half);
+  return `<div class="eff">
+    <div class="h"><span class="name">${esc(f.factor.replace(/_/g," "))}</span>
+      <span class="amt ${dim?"":(worse?"worse":"better")}">
+        ${f.difference>0?"+":""}${f.difference}</span></div>
+    <div class="track">
+      <i class="ci" style="left:${lo}%;width:${Math.max(0.8,hi-lo)}%;background:${color}"></i>
+      <i class="bar" style="left:${barL}%;width:${Math.max(1.5,barW)}%;background:${color}"></i>
+      <span class="mid"></span>
+    </div>
+    <div class="meta">95% CI [${f.ci_low}, ${f.ci_high}] · ${f.n_with} with,
+      ${f.n_without} without · q=${f.q_value}</div>
+  </div>`;
+}
+
+// ---------- Learning ----------
+async function renderLearning(el, stale, quiet){
+  const d = await api("/api/learning?days=60");
+  if(stale()) return;
+  const a=d.activity_recognition, i=d.lifestyle_insights;
+  const aPct = Math.round(100*a.labelled_total/((a.labelled_total+a.labels_needed)||1));
+  const iPct = Math.round(100*i.usable_pairs/((i.usable_pairs+i.pairs_needed)||1));
+  el.innerHTML = `
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <h2 style="margin:0">Activity recognition</h2>
+      <span class="pill ${a.active?"ok":""}">${a.active?"learning":"rules"}</span>
+    </div>
+    ${a.active ? `<div class="muted">Trained on <b style="color:var(--ink)">${a.labelled_total}</b>
+        confirmed activities across ${esc(a.ready_classes.join(", "))}.
+        Cross-validated accuracy ${Math.round((a.model_accuracy||0)*100)}%.</div>`
+      : `<div class="prog">
+          <div class="t"><span>${esc(a.blocker||"")}</span><b>${esc(a.eta.text)}</b></div>
+          <div class="bar"><i style="width:${Math.max(3,aPct)}%"></i></div>
+          <div class="muted" style="margin-top:9px">
+            <b style="color:var(--ink)">${a.labels_needed}</b> more confirmations needed.
+            ${esc(a.note)}</div></div>`}
+    ${Object.keys(a.counts||{}).length?`<div class="muted" style="margin-top:12px">
+      Confirmed: ${Object.entries(a.counts).map(([k,v])=>`${esc(k)} ${v}`).join(" · ")}</div>`:""}
+    <div class="row" style="margin-top:14px"><button class="btn ghost" id="train">Retrain now</button>
+      <span class="muted" id="tmsg" style="text-align:right"></span></div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <h2 style="margin:0">Lifestyle insights</h2>
+      <span class="pill ${i.active?"ok":""}">${i.active?"running":"waiting"}</span>
+    </div>
+    ${i.active ? `<div class="muted"><b style="color:var(--ink)">${i.journalled_days}</b>
+        journalled days. Testable: ${esc(i.testable_factors.join(", "))}.</div>`
+      : `<div class="prog">
+          <div class="t"><span>${esc(i.blocker||"")}</span><b>${esc(i.eta.text)}</b></div>
+          <div class="bar"><i style="width:${Math.max(3,iPct)}%"></i></div>
+          <div class="muted" style="margin-top:9px">${esc(i.note)}</div></div>`}
+    ${Object.keys(i.factors_not_yet_testable||{}).length?`<div class="muted" style="margin-top:12px">
+      Not yet testable: ${Object.entries(i.factors_not_yet_testable)
+        .map(([k,v])=>`${esc(k)} (${esc(v.needs)})`).join(" · ")}</div>`:""}
+  </div>`;
+  $("#train").onclick = async () => {
+    say("#tmsg","training…");
+    try{
+      const r=await api("/api/model/train",{method:"POST"});
+      say("#tmsg", r.trained ? `trained on ${r.n_samples}, ${Math.round(r.cv_accuracy*100)}% accurate`
+                             : r.reason);
+    }catch(err){ say("#tmsg","failed: "+err.message); }
+    setTimeout(render,1500);
+  };
+}
+
+// ---------- shell ----------
+const TABS={today:renderToday, journal:renderJournal, activities:renderActivities,
+            body:renderBody, insights:renderInsights, learning:renderLearning};
+// Detail views live on their own hash routes so they are linkable and the
+// browser back button behaves the way people expect.
+const DETAILS={health:renderHealthDetail, stress:renderStressDetail, age:renderAgeDetail};
+
+function openDetail(name){ location.hash = "#/" + name; }
+function closeDetail(){
+  if(history.length > 1) history.back(); else location.hash = "";
+}
+function currentDetail(){
+  const m = /^#\/(\w+)$/.exec(location.hash || "");
+  return m && DETAILS[m[1]] ? m[1] : null;
+}
+// --- protecting work in progress -------------------------------------------
+// A background refresh rebuilds #content from scratch. If the reader is part
+// way through a journal entry when one lands -- and on a phone that happens
+// every time they glance at a notification and come back -- their typing is
+// gone. So a quiet refresh compares the form against how it was rendered and
+// stands down if anything has been touched. A refresh is worth less than the
+// sentence someone is in the middle of writing.
+function formSignature(root){
+  if(!root) return "";
+  const parts = [];
+  root.querySelectorAll("input, textarea, select").forEach((el, i) => {
+    parts.push(i + ":" + (el.type === "checkbox" || el.type === "radio"
+      ? el.checked : el.value));
+  });
+  root.querySelectorAll("[data-tag]").forEach(el => {
+    parts.push("tag:" + el.dataset.tag + "=" + el.getAttribute("aria-pressed"));
+  });
+  return parts.join("\u0001");
+}
+let renderedSignature = "";
+function hasUnsavedInput(){
+  return formSignature($("#content")) !== renderedSignature;
+}
+// Once the work is safely on the server it is no longer work in progress.
+function markSaved(){ renderedSignature = formSignature($("#content")); }
+
+// A slow render must never overwrite a tab the user has since switched to.
+let renderToken = 0;
+async function render(opts){
+  const quiet = !!(opts && opts.quiet);
+  // Never rebuild under someone's hands. Only a background refresh defers;
+  // a tab tap or a save is a deliberate act and always re-renders. This has
+  // to come before the token is claimed: bumping it and then returning would
+  // cancel a render already in flight and strand the skeleton on screen.
+  if(quiet && hasUnsavedInput()) return;
+  const my = ++renderToken, el = $("#content");
+  const detail = currentDetail();
+  const tab = detail || state.tab;
+  const stale = () => my !== renderToken;
+  // A background refresh keeps the current content on screen and skips the
+  // entrance animations; only a real navigation shows the skeleton.
+  document.body.classList.toggle("quiet", quiet);
+  if(!quiet) el.innerHTML = SKELETONS[(!detail && tab === "today") ? "today" : "list"];
+  try{
+    await (detail ? DETAILS[detail] : TABS[tab])(el, stale, quiet);
+    if(!stale() && detail){
+      const back = $("#dback");
+      if(back) back.onclick = closeDetail;
+    }
+    if(stale()) return;
+    renderedSignature = formSignature(el);
+    syncDevPanel();
+    say("#updated","updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
+  }catch(e){
+    if(stale()) return;
+    // A failed background refresh must not blank content that is still valid.
+    if(!quiet)
+      el.innerHTML = `<div class="card"><div class="empty">Could not load: ${esc(e.message)}</div></div>`;
+    say("#updated", quiet ? "refresh failed" : "error");
+  }
+}
+$("#nav").onclick = e => {
+  const b=e.target.closest("[data-tab]"); if(!b) return;
+  // Leaving a detail view: drop the hash without firing hashchange, so the
+  // tab below renders once rather than twice.
+  if(currentDetail())
+    history.replaceState(null, "", location.pathname + location.search);
+  state.tab=b.dataset.tab;
+  document.querySelectorAll("#nav button").forEach(x=>
+    x.setAttribute("aria-selected", String(x===b)));
+  render();
+};
+// The hash is the only thing that says which detail view is open, so every
+// way of changing it -- a tapped card, the back arrow, the browser's own back
+// and forward buttons, a pasted link -- has to come through here.
+addEventListener("hashchange", () => render());
+render();
+// Live data: refresh quietly and often enough to feel live, without the page
+// visibly rebuilding itself under the reader.
+setInterval(() => {
+  if(document.hidden) return;               // no work while the tab is hidden
+  const d = currentDetail();
+  if(d === "health" || d === "stress" || (!d && (state.tab === "today" || state.tab === "body")))
+    render({quiet:true});
+}, 20000);
+document.addEventListener("visibilitychange", () => {
+  if(!document.hidden) render({quiet:true});
+});
+</script>
+</body>
+</html>

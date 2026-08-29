@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0d0d0d">
+<title>Set up your laptop</title>
+<style>
+:root{--bg:#0d0d0d;--card:#1a1a19;--line:#2c2c2a;--ink:#fff;--ink2:#c3c2b7;
+  --muted:#898781;--accent:#3987e5;--warn:#fab219;--crit:#d03b3b;--r:16px}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f9f9f7;--card:#fcfcfb;--line:#e1e0d9;--ink:#0b0b0b;--ink2:#52514e;
+    --accent:#2a78d6}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);padding:26px 16px 60px;
+  font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:620px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px;letter-spacing:-.01em}
+.lede{color:var(--muted);font-size:13.5px;margin:0 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:20px;margin-bottom:14px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  margin:0 0 14px;font-weight:600}
+ol{margin:0;padding-left:20px} li{margin-bottom:12px}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+/* Wrap rather than clip: these are commands meant to be copied. */
+pre{background:var(--bg);border:1px solid var(--line);border-radius:10px;
+  padding:11px 13px;margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.btn{display:inline-block;background:var(--accent);color:#fff;border:none;
+  padding:13px 22px;border-radius:11px;font:inherit;font-size:15px;font-weight:600;
+  cursor:pointer;text-decoration:none}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px}
+input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:9px;padding:10px 12px;font:inherit;font-size:13.5px}
+.note{background:color-mix(in srgb,var(--warn) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn) 34%,transparent);
+  border-radius:var(--r);padding:14px 16px;font-size:13px;margin-bottom:14px}
+.note b{color:var(--warn)}
+.bad{background:color-mix(in srgb,var(--crit) 12%,transparent);
+  border-color:color-mix(in srgb,var(--crit) 38%,transparent)}
+.bad b{color:var(--crit)}
+.muted{color:var(--muted);font-size:12.5px}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Set up your laptop</h1>
+  <p class="lede">This downloads the Bluetooth bridge already pointed at
+    <code>{{ base_url }}</code> — no config to edit by hand.</p>
+
+  {% if not allowed %}
+    <div class="note bad"><b>Download blocked.</b> {{ reason }}</div>
+  {% elif not has_token %}
+    <div class="note bad"><b>Server not configured.</b>
+      <code>INGEST_TOKEN</code> is not set, so there is nothing to hand out.
+      Set it in <code>.env</code> and restart.</div>
+  {% elif not ready %}
+    <div class="note bad"><b>Image is missing the laptop files.</b>
+      Rebuild from the repository root: <code>docker compose up -d --build</code></div>
+  {% else %}
+    <div class="note"><b>This file contains a credential.</b> The bundled
+      <code>config.toml</code> holds your ingest token, which can write to this
+      server. Keep it to yourself and do not commit it.</div>
+
+    <div class="card">
+      <h2>1 · Download</h2>
+      <form method="post" action="/setup/bundle.zip">
+        <p class="muted" style="margin-top:0">If this server sits behind Cloudflare
+          Access, paste a service token and it will be baked in. The bridge cannot
+          complete an interactive login on its own. Leave blank if you are not
+          using Access.</p>
+        <label for="cid">CF-Access-Client-Id (optional)</label>
+        <input id="cid" name="cf_access_client_id" placeholder="….access" autocomplete="off">
+        <label for="csec">CF-Access-Client-Secret (optional)</label>
+        <input id="csec" name="cf_access_client_secret" type="password" autocomplete="off">
+        <p style="margin:18px 0 0"><button class="btn" type="submit">Download strap-laptop.zip</button></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>2 · On the laptop</h2>
+      <ol>
+        <li>Unzip it anywhere, then in that folder run:
+          <pre>powershell -ExecutionPolicy Bypass -File windows\setup.ps1</pre>
+          <span class="muted">Needs Python 3.11+ from python.org, with “Add to PATH” ticked.</span></li>
+        <li><b>Un-pair the strap from the WHOOP phone app first</b> — it only talks
+          to one device at a time — then find it:
+          <pre>.\.venv\Scripts\whoop-bridge.exe scan</pre>
+          Paste the address into <code>address</code> in <code>config.toml</code>.</li>
+        <li>Check it can reach this server:
+          <pre>.\.venv\Scripts\whoop-bridge.exe test-endpoint</pre></li>
+        <li>Run it, and start it at logon:
+          <pre>.\.venv\Scripts\pip.exe install -e ".[tray]"
+.\.venv\Scripts\pythonw.exe -m tray.whoop_tray</pre></li>
+      </ol>
+      <p class="muted">The bundle repeats all of this in <code>START-HERE.md</code>.</p>
+    </div>
+
+    <div class="card">
+      <h2>3 · Then</h2>
+      <p style="margin:0">Come back to <a href="/">the dashboard</a>. The strap hands
+        over its stored ~14 days on the first connect, so history appears straight
+        away. Recovery needs about a week of baseline; the Learning tab tells you
+        what is still warming up.</p>
+    </div>
+  {% endif %}
+
+  <p class="muted"><a href="/">← Dashboard</a></p>
+</div>
+</body>
+</html>
