@@ -53,15 +53,19 @@ jobs:
           print(f'winrt distributions installed: {len(dists)}')
           for name in dists:
               print('   ', name)
-          import bleak
-          print('bleak', bleak.__version__)
-          import winrt.windows.devices.bluetooth as b
-          print('winrt bluetooth import: ok')
+          print('bleak', md.version('bleak'))
+          import winrt.windows.devices.bluetooth
+          print('importing winrt.windows.devices.bluetooth: ok')
+          import bleak.backends.winrt.client
+          print('importing bleak winrt backend: ok')
           from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs
-          mods, libs = collect_submodules('winrt'), collect_dynamic_libs('winrt')
-          print(f'PyInstaller will bundle {len(mods)} winrt modules, {len(libs)} binaries')
+          mods = collect_submodules('winrt')
+          libs = collect_dynamic_libs('winrt')
+          print(f'PyInstaller sees {len(mods)} winrt modules and {len(libs)} binaries')
+          for m in mods[:12]:
+              print('   ', m)
           if not mods:
-              raise SystemExit('PyInstaller cannot see any winrt modules to bundle')
+              raise SystemExit('PyInstaller cannot see any winrt module to bundle')
           "@
 
       - name: Build
