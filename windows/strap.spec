@@ -44,9 +44,8 @@ analysis = Analysis(
     hookspath=[],
     runtime_hooks=[],
     # Trimming what a tray app cannot need keeps the download reasonable.
-    excludes=["matplotlib", "numpy", "scipy", "pandas", "pytest", "IPython"],
+    excludes=["matplotlib", "numpy", "scipy", "pandas", "pytest", "IPython", "winrt"],
     noarchive=False,
-    collect_all=["winrt"],
 )
 pyz = PYZ(analysis.pure)
 
