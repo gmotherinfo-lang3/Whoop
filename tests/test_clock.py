@@ -108,8 +108,14 @@ def test_real_timestamps_still_resolve(clock, unix):
     assert clock.day_of(unix) is not None
 
 
-def test_ingest_does_not_expire_anything_for_an_impossible_timestamp(monkeypatch):
-    import server.app.main as main
-    monkeypatch.setattr(main, "CLOCK", Clock(CHICAGO))
-    touched = main._touched_dates([{"unix": 2 ** 100}, {"unix": 1_788_066_000}])
+def test_ingest_does_not_expire_anything_for_an_impossible_timestamp():
+    from server.app.store import DayCache, UserStore
+
+    class Stub:
+        clock = Clock(CHICAGO)
+        raw_cache = final_cache = stress_cache = DayCache()
+        caches = ()
+
+    touched = UserStore.touched_dates(Stub(), [{"unix": 2 ** 100},
+                                               {"unix": 1_788_066_000}])
     assert touched == {"2026-08-30"}

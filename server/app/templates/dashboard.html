@@ -190,6 +190,27 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hm .c .v.none{color:var(--muted);font-weight:400}
 
+/* ---- settings ---- */
+.setrow{margin-bottom:14px}
+.setrow label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1.3px;
+  color:var(--muted);margin:0 0 6px}
+.setrow input,.setrow select{width:100%;background:var(--raised);border:1px solid var(--line);
+  color:var(--ink);border-radius:var(--r-sm);padding:11px 12px;font:inherit;
+  -webkit-appearance:none;appearance:none}
+.setrow select{background-image:none}
+.sethint{color:var(--muted);font-size:11.5px;margin-top:5px;line-height:1.45}
+.btn.small{padding:7px 13px;font-size:12.5px;width:auto}
+.paircode{margin-top:14px;padding:16px;border-radius:var(--r-sm);
+  background:color-mix(in srgb,var(--good) 9%,transparent);
+  border:1px solid color-mix(in srgb,var(--good) 28%,transparent)}
+.paircode .code{font-size:30px;font-weight:750;letter-spacing:.14em;color:var(--good);
+  font-variant-numeric:tabular-nums;margin-bottom:8px;text-align:center}
+.paircode input{width:100%;background:var(--bg);border:1px solid var(--line);
+  color:var(--ink);border-radius:var(--r-sm);padding:10px;font:12px/1.4 ui-monospace,monospace;
+  margin-bottom:8px}
+.paircode .muted{font-size:12px;line-height:1.5}
+.paircode .btn{margin-top:10px}
+
 /* ---- detail views ---- */
 .dhead{display:flex;align-items:center;gap:10px;margin:2px 0 14px}
 .dhead button{background:transparent;border:none;color:var(--ink2);cursor:pointer;
@@ -442,6 +463,7 @@ nav button:active{transform:scale(.96)}
         <span class="led" id="devled"></span>
       </button>
       <button class="icon" id="theme" title="Switch theme" aria-label="Switch theme" data-ic="theme"></button>
+      <button class="icon" id="settings" title="Settings" aria-label="Settings" data-ic="gear"></button>
     </div>
   </header>
   <div id="content"><div class="empty">Loading…</div></div>
@@ -470,6 +492,7 @@ const ACTIVITY_TYPES = ["run","walk","cycle","swim","lift","hiit","yoga","sport"
   "sleep","sedentary","other"];
 // Thin-line icon set, 24x24, 1.5px stroke. No emoji anywhere in the UI.
 const ICONS = {
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-1 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.6 1.6 0 0 0 4.6 15a1.6 1.6 0 0 0-1.47-1H3a2 2 0 1 1 0-4h.11A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.6 1.6 0 0 0 9 4.6a1.6 1.6 0 0 0 1-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 1 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.6 1.6 0 0 0 19.4 9v0a1.6 1.6 0 0 0 1.47 1H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47 1z"/>',
   // --- activities ---
   run:`<circle cx="15.5" cy="4.2" r="2.1"/><path d="M13.6 8.1 10.4 12.4l3.1 2.6-1.1 5.7"/><path d="M10.4 12.4 6.2 13.6 4.4 18"/><path d="M14.2 9.6l3.6 1.7 2.6-1.4"/>`,
   walk:`<circle cx="13.2" cy="4.2" r="2.1"/><path d="M12.4 8.2 10 12.6l2.6 2.3-.7 5.6"/><path d="M10 12.6 7.6 15l-.5 5.2"/><path d="M12.9 9.4l3 1.6"/>`,
@@ -591,6 +614,12 @@ function cacheKey(path){ return path; }
 
 async function fetchJSON(path, opts){
   const r = await fetch(path, opts);
+  if(r.status === 401){
+    // The session expired or was signed out elsewhere. Anything else here
+    // would be an error message the reader can do nothing about.
+    location.href = "/signin";
+    throw new Error("Signed out");
+  }
   if(!r.ok){
     let m; try{ m = (await r.json()).detail; }catch(_){ m = "HTTP " + r.status; }
     throw new Error(m);
@@ -1437,7 +1466,8 @@ async function renderHealthDetail(el, stale, quiet){
   const d = await api(`/api/health-monitor?date=${state.date}`);
   if(stale()) return;
   const hr = d.heart_rate;
-  const ICONS = {"Resting HR":"rhr","HRV":"hrv","Respiratory rate":"lungs",
+  const ICONS = {
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-1 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.6 1.6 0 0 0 4.6 15a1.6 1.6 0 0 0-1.47-1H3a2 2 0 1 1 0-4h.11A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.6 1.6 0 0 0 9 4.6a1.6 1.6 0 0 0 1-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 1 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.6 1.6 0 0 0 19.4 9v0a1.6 1.6 0 0 0 1.47 1H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47 1z"/>',"Resting HR":"rhr","HRV":"hrv","Respiratory rate":"lungs",
                  "Blood oxygen":"droplet","Skin temperature":"thermometer"};
   el.innerHTML = detailHeader("Health monitor") + `<div class="stagger">
     <div class="card">
@@ -1821,12 +1851,172 @@ async function renderLearning(el, stale, quiet){
   };
 }
 
+// ---------- Settings ----------
+// Everything account-shaped lives here: who you are, which laptops may post
+// for you, and who else has an account. It is a detail route so the back
+// arrow and the browser's back button behave the way they do everywhere else.
+const ZONES = ["America/Chicago","America/New_York","America/Denver",
+  "America/Los_Angeles","America/Phoenix","America/Anchorage","Pacific/Honolulu",
+  "Europe/London","Europe/Dublin","Europe/Paris","Europe/Berlin","Europe/Madrid",
+  "Australia/Sydney","Asia/Tokyo","Asia/Singapore","UTC"];
+
+function fieldRow(label, inner, hint){
+  return `<div class="setrow"><label>${esc(label)}</label>${inner}
+    ${hint?`<div class="sethint">${hint}</div>`:""}</div>`;
+}
+
+async function renderSettings(el, stale, quiet){
+  const [me, devices] = await Promise.all([api("/api/me"), api("/api/devices")]);
+  if(stale()) return;
+  const u = me.user;
+  const guessed = (()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }
+                         catch(_){ return ""; } })();
+  const zones = Array.from(new Set([u.timezone, guessed, ...ZONES].filter(Boolean)));
+
+  let invites = null;
+  if(me.is_owner){ try{ invites = await api("/api/invites"); }catch(_){ } }
+  if(stale()) return;
+
+  el.innerHTML = detailHeader("Settings") + `<div class="stagger">
+    <div class="card">
+      <h2>${esc(u.display_name || u.email)}</h2>
+      <div class="muted" style="margin-bottom:14px">${esc(u.email)}${
+        me.is_owner?" · owner of this server":""}</div>
+      <button class="btn ghost" id="signout">Sign out</button>
+    </div>
+
+    <div class="card"><h2>Your day</h2>
+      ${fieldRow("Time zone",
+        `<select id="tz">${zones.map(z=>`<option value="${esc(z)}"${
+          z===u.timezone?" selected":""}>${esc(z.replace(/_/g," "))}</option>`).join("")}</select>`,
+        "Days break at midnight here, so an evening belongs to that evening.")}
+      ${fieldRow("Maximum heart rate",
+        `<input id="maxhr" type="number" inputmode="numeric" min="120" max="230"
+           value="${u.max_hr ?? ""}" placeholder="${220 - (u.age || 30)}">`,
+        "Strain is measured against this. The placeholder is the 220−age rule, which is only a rough guide.")}
+      ${fieldRow("Age", `<input id="age" type="number" inputmode="numeric" min="10" max="100"
+           value="${u.age ?? ""}" placeholder="optional">`,
+        "Only used to compare your estimated VO₂ max against the population median.")}
+      ${fieldRow("Sleep target (hours)",
+        `<input id="sleepneed" type="number" inputmode="decimal" step="0.5" min="4" max="12"
+           value="${u.sleep_need_h ?? ""}" placeholder="8">`)}
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="saveprofile">Save</button>
+        <span class="muted" id="profmsg" style="text-align:right;flex:1"></span></div>
+    </div>
+
+    <div class="card"><h2>Your laptops</h2>
+      <div class="muted" style="margin-bottom:12px">A laptop with Bluetooth stays
+        near your strap and forwards what it collects. Pairing gives that laptop
+        its own key — revoking one does not affect the others.</div>
+      ${devices.devices.length ? devices.devices.map(d=>`
+        <div class="bl" data-device="${d.id}">
+          <div class="bl-k">${esc(d.name || "Laptop")}${d.revoked?" · revoked":""}</div>
+          <div class="bl-s">${d.last_seen ? "last heard " + esc(d.last_seen)
+                                          : "never connected"}</div>
+          ${d.revoked?"":`<button class="btn ghost small revoke">Revoke</button>`}
+        </div>`).join("")
+        : `<div class="muted">No laptop paired yet.</div>`}
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="pair">Connect a laptop</button></div>
+      <div id="pairout"></div>
+    </div>
+
+    ${me.is_owner ? `<div class="card"><h2>Family</h2>
+      <div class="muted" style="margin-bottom:12px">Everyone gets their own account
+        and their own data. Nobody can see anyone else's.</div>
+      ${(invites?.members || []).map(m=>`<div class="bl">
+        <div class="bl-k">${esc(m.display_name || m.email)}</div>
+        <div class="bl-s">${esc(m.email)} · ${esc(m.role)}${m.disabled?" · disabled":""}</div>
+      </div>`).join("")}
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="invite">Create an invite link</button></div>
+      <div id="inviteout"></div>
+    </div>` : ""}
+
+    <div class="card"><h2>Password</h2>
+      ${fieldRow("Current", `<input id="pwold" type="password" autocomplete="current-password">`)}
+      ${fieldRow("New", `<input id="pwnew" type="password" autocomplete="new-password">`)}
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost" id="savepw">Change password</button>
+        <span class="muted" id="pwmsg" style="text-align:right;flex:1"></span></div>
+      <div class="sethint">Changing it signs you out everywhere, including this device.</div>
+    </div>
+  </div>`;
+
+  $("#signout").onclick = async () => {
+    await api("/api/logout", {method:"POST"});
+    location.href = "/signin";
+  };
+
+  $("#saveprofile").onclick = async () => {
+    const num = id => { const v = $(id).value.trim(); return v === "" ? null : Number(v); };
+    try{
+      await api("/api/me", {method:"PATCH", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({timezone: $("#tz").value, max_hr: num("#maxhr"),
+          age: num("#age"), sleep_need_h: num("#sleepneed")})});
+      apiCache.clear();
+      say("#profmsg", "saved ✓"); setTimeout(()=>say("#profmsg",""), 2500);
+    }catch(err){ say("#profmsg", err.message); }
+  };
+
+  $("#pair").onclick = async () => {
+    try{
+      const got = await api("/api/pair/start", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body:"{}"});
+      $("#pairout").innerHTML = `<div class="paircode">
+        <div class="code">${esc(got.code)}</div>
+        <div class="muted">Open the Strap setup app on your Windows laptop and type
+          this in. It works once and expires in about fifteen minutes.</div>
+        <a class="btn ghost small" href="/setup" target="_blank" rel="noopener">
+          Get the laptop app</a></div>`;
+    }catch(err){ $("#pairout").innerHTML = `<div class="muted">${esc(err.message)}</div>`; }
+  };
+
+  el.querySelectorAll("[data-device] .revoke").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.closest("[data-device]").dataset.device;
+      await api(`/api/devices/${id}`, {method:"DELETE"});
+      render();
+    };
+  });
+
+  const inviteBtn = $("#invite");
+  if(inviteBtn) inviteBtn.onclick = async () => {
+    try{
+      const r = await fetch("/api/invites", {method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:"label="});
+      const got = await r.json();
+      if(!r.ok) throw new Error(got.detail || "failed");
+      $("#inviteout").innerHTML = `<div class="paircode">
+        <input readonly id="invurl" value="${esc(got.url)}">
+        <div class="muted">${esc(got.note)}</div>
+        <button class="btn ghost small" id="copyinv">Copy link</button></div>`;
+      $("#copyinv").onclick = async () => {
+        try{ await navigator.clipboard.writeText(got.url); say("#copyinv","Copied"); }
+        catch(_){ $("#invurl").select(); }
+      };
+    }catch(err){ $("#inviteout").innerHTML = `<div class="muted">${esc(err.message)}</div>`; }
+  };
+
+  $("#savepw").onclick = async () => {
+    try{
+      const out = await api("/api/password", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({current: $("#pwold").value, replacement: $("#pwnew").value})});
+      say("#pwmsg", "changed — signing out");
+      setTimeout(()=>{ location.href = "/signin"; }, 1200);
+    }catch(err){ say("#pwmsg", err.message); }
+  };
+}
+
 // ---------- shell ----------
 const TABS={today:renderToday, journal:renderJournal, activities:renderActivities,
             body:renderBody, insights:renderInsights, learning:renderLearning};
 // Detail views live on their own hash routes so they are linkable and the
 // browser back button behaves the way people expect.
-const DETAILS={health:renderHealthDetail, stress:renderStressDetail, age:renderAgeDetail};
+const DETAILS={health:renderHealthDetail, stress:renderStressDetail, age:renderAgeDetail,
+               settings:renderSettings};
 
 function openDetail(name){ location.hash = "#/" + name; }
 function closeDetail(){
@@ -1911,6 +2101,7 @@ $("#nav").onclick = e => {
 // The hash is the only thing that says which detail view is open, so every
 // way of changing it -- a tapped card, the back arrow, the browser's own back
 // and forward buttons, a pasted link -- has to come through here.
+$("#settings").onclick = () => openDetail("settings");
 addEventListener("hashchange", () => render());
 render();
 // Live data: refresh quietly and often enough to feel live, without the page

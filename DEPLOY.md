@@ -23,9 +23,15 @@ cp .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(32))"   # -> INGEST_TOKEN
 ```
 
+The first person to open the server's URL creates the owner account. Everyone
+after that needs an invite link from Settings → Family.
+
 Fill in `.env`:
 
-- `INGEST_TOKEN` — the secret the bridge posts with.
+- `INGEST_TOKEN` — **no longer needed for a new install.** Laptops get their
+  own key by pairing (Settings → Connect a laptop). Set it only if you are
+  upgrading and have a bridge still configured with the old shared token; it
+  keeps working until you re-pair, and posts as the owner.
 - `TUNNEL_TOKEN` — from Cloudflare Zero Trust → Networks → Tunnels → your
   tunnel → Install connector (copy the token out of the shown command).
 - `MAX_HR` — **set this**. Strain is computed against it; the 190 default is

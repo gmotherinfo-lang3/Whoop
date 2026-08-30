@@ -5,8 +5,11 @@ services:
       dockerfile: server/Dockerfile
     restart: unless-stopped
     environment:
-      # Shared secret the laptop bridge posts with. Set in .env.
-      INGEST_TOKEN: ${INGEST_TOKEN:?set INGEST_TOKEN in .env}
+      # Only needed when upgrading a bridge that still has the old shared
+      # token. New laptops pair instead and get their own key.
+      INGEST_TOKEN: ${INGEST_TOKEN:-}
+      # accounts.db and one data-<user>.db per person live here.
+      WHOOP_DATA_DIR: /data
       # Your max heart rate. Default 190 = the 220-age rule at age 30.
       # Strain is computed against this, so a wrong value skews it.
       MAX_HR: ${MAX_HR:-190}
@@ -24,8 +27,9 @@ services:
       # estimated VO2 max against the population median. Unset is fine.
       USER_AGE: ${USER_AGE:-}
       USER_SEX: ${USER_SEX:-male}
-      # Controls /setup, which hands out a pre-configured laptop bundle
-      # containing INGEST_TOKEN. "on" (default) serves it only to a request
+      # Controls /setup, which hands out the pre-configured laptop bundle.
+      # It carries no credential any more, but there is no reason to serve it
+      # to the internet. "on" (default) serves it only to a request
       # Cloudflare Access has authenticated, or to a direct LAN client.
       # "off" disables it. "open" removes the check - do not use on the internet.
       SETUP_DOWNLOAD: ${SETUP_DOWNLOAD:-on}

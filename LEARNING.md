@@ -405,3 +405,62 @@ Worth recording, because these were the parts most likely to be wrong:
   running years ahead, out-of-order bursts, 5000-record catch-ups, absurd heart
   rates and zero-length RR intervals were all absorbed without corrupting a day
   or reporting a fake number.
+
+---
+
+# Accounts, and why one database each
+
+The server holds accounts now. The first visit creates the owner; everyone
+after that needs an invite link. That answers the two things self-hosting got
+wrong: family members had nowhere to put their own data, and setting up a
+laptop meant cloning a repository and editing a config by hand.
+
+## One SQLite file per person
+
+The obvious design is a `user_id` column on every table. It was not chosen.
+Correct isolation would then depend on all forty-odd queries carrying the right
+`WHERE`, and the failure mode of forgetting one is showing a family member
+somebody else's heart rate. Instead each account gets `data-<id>.db`, and
+identity lives apart in `accounts.db`. There is no query that *could* return
+another person's row, because their rows are not in the file.
+
+It costs a few open handles and rules out whole-household queries. For a
+household server that is a good trade, and it has a pleasant side effect: the
+timezone, maximum heart rate and sleep target belong to the person rather than
+the server, so two people on one box can differ without affecting each other's
+numbers.
+
+## Pairing, not a shared secret
+
+Setting up a laptop used to mean copying the server's ingest token into a file.
+That token was the same for everyone, appeared in a download that therefore had
+to be protected, and could not be revoked for one laptop without breaking the
+rest.
+
+Now: **Settings → Connect a laptop** shows a code like `K7M2-9QX4`, and on the
+laptop `whoop-bridge pair --code K7M2-9QX4` exchanges it for a key belonging to
+that laptop alone. The code is single use, expires in about fifteen minutes,
+and asking for a new one invalidates the last. Both the redemption and the
+invite flow mark themselves used conditionally, so two clients racing the same
+code cannot both get through.
+
+The pleasing consequence is that the laptop bundle no longer contains a secret
+at all. It is code and an address; the key arrives afterwards, over the wire,
+addressed to one machine.
+
+## Choices worth writing down
+
+* **scrypt, from the standard library.** Memory-hard, no dependency to keep
+  current. Sessions, invites and device keys are stored only as SHA-256, so a
+  database backup contains no working credential.
+* **A failed login costs the same whether or not the account exists.** An
+  unknown address still runs a hash against a dummy, because otherwise the
+  response time says which addresses are worth attacking.
+* **One error message for every login failure.** "No such account" would answer
+  the same question more directly.
+* **The session cookie is `Secure` only when the connection is.** Marking it
+  unconditionally would make signing in from the LAN silently impossible —
+  the browser discards a Secure cookie over plain HTTP, with no error to
+  explain it.
+* **Changing a password ends every session.** That is usually why someone is
+  changing it.

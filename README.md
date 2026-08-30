@@ -122,6 +122,30 @@ your own distribution rather than WHOOP's Stress Score, fitness age is a VO₂ m
 comparison rather than biological age, and HRV is never scored against
 population norms.
 
+## Accounts
+
+The server holds accounts. Open its URL and the first visit creates the owner;
+after that it is invite only — from **Settings → Family** you generate a link,
+your brother opens it and sets his own password. Each account has its own
+SQLite file, its own timezone and its own maximum heart rate, and there is no
+query in this app that could return someone else's data because their rows are
+not in the file.
+
+Setting a laptop up is a code, not a checkout:
+
+1. Sign in, open **Settings → Connect a laptop**. It shows a code like
+   `K7M2-9QX4`, good for about fifteen minutes and usable once.
+2. Download the laptop bundle from `/setup`, run `windows\setup.ps1`.
+3. `whoop-bridge pair --code K7M2-9QX4`
+
+That laptop now has its own key, tied to your account. Revoking it from
+Settings does not disturb any other laptop, and the download itself contains
+no secret — it is code and an address.
+
+On iPhone, open the URL in Safari and **Add to Home Screen**. It gets an icon
+and launches without Safari's chrome, which is as close to an installed app as
+iOS allows something that is not in the App Store.
+
 ## Setup
 
 The laptop half. For the server and tunnel, see **[DEPLOY.md](DEPLOY.md)**.

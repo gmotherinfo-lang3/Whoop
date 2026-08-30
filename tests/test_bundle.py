@@ -94,8 +94,15 @@ def test_bundle_excludes_build_junk_and_databases():
 def test_generated_config_points_back_at_this_server():
     cfg = render_config("https://whoop.example.com", "secret-token")
     assert 'forward_url = "https://whoop.example.com/ingest"' in cfg
-    assert 'forward_token = "secret-token"' in cfg
-    assert 'address = ""' in cfg          # the one thing the user still supplies
+    assert 'address = ""' in cfg          # supplied by `whoop-bridge scan`
+
+
+def test_the_bundle_ships_no_credential():
+    """It used to embed the shared ingest token, which made the download itself
+    a secret. The laptop claims its own key by pairing instead."""
+    cfg = render_config("https://whoop.example.com", "secret-token")
+    assert "secret-token" not in cfg
+    assert 'forward_token = ""' in cfg
 
 
 def test_generated_config_can_carry_a_service_token():
@@ -110,7 +117,7 @@ def test_generated_config_is_loadable_by_the_bridge(tmp_path):
     path.write_text(render_config("https://whoop.example.com", "tok"))
     cfg = Config.load(path)
     assert cfg.forward_url == "https://whoop.example.com/ingest"
-    assert cfg.forward_token == "tok"
+    assert cfg.forward_token == ""        # filled in by `whoop-bridge pair`
     # Only the strap address should be outstanding.
     assert cfg.validate() == ["no device address set (run `whoop-bridge scan` first)"]
 
@@ -148,3 +155,82 @@ def test_transport_rule(url, ok):
 def test_private_host_detection():
     assert is_private_host("10.1.2.3") and is_private_host("localhost")
     assert not is_private_host("example.com") and not is_private_host(None)
+
+
+# --- pairing writes the token back ------------------------------------------
+# The laptop gets its key by pairing rather than having one shipped to it, so
+# the write-back has to leave everything else in the config alone -- the strap
+# address above all, which someone found with `scan` and would have to find
+# again.
+def _paired(tmp_path, existing: str) -> str:
+    from whoop_bridge.cli import _write_pairing
+    path = tmp_path / "config.toml"
+    path.write_text(existing)
+    _write_pairing(path, "https://strap.example.com",
+                   {"token": "the-device-token", "ingest_url": "https://strap.example.com/ingest"})
+    return path.read_text()
+
+
+BASE_CONFIG = '''[device]
+address = "AA:BB:CC:DD:EE:FF"
+live_hr = true
+
+[forward]
+forward_url = ""
+forward_token = ""
+cf_access_client_id = "svc.id"
+
+[storage]
+spool_path = "whoop-spool.db"
+'''
+
+
+def test_pairing_writes_the_token_and_the_url(tmp_path):
+    out = _paired(tmp_path, BASE_CONFIG)
+    assert 'forward_token = "the-device-token"' in out
+    assert 'forward_url = "https://strap.example.com/ingest"' in out
+
+
+def test_pairing_keeps_the_strap_address(tmp_path):
+    out = _paired(tmp_path, BASE_CONFIG)
+    assert 'address = "AA:BB:CC:DD:EE:FF"' in out
+
+
+def test_pairing_keeps_everything_else(tmp_path):
+    out = _paired(tmp_path, BASE_CONFIG)
+    assert 'cf_access_client_id = "svc.id"' in out
+    assert 'spool_path = "whoop-spool.db"' in out
+    assert "live_hr = true" in out
+
+
+def test_re_pairing_replaces_the_old_token(tmp_path):
+    from whoop_bridge.cli import _write_pairing
+    path = tmp_path / "config.toml"
+    path.write_text(BASE_CONFIG)
+    _write_pairing(path, "https://x", {"token": "first", "ingest_url": "https://x/ingest"})
+    _write_pairing(path, "https://x", {"token": "second", "ingest_url": "https://x/ingest"})
+    out = path.read_text()
+    assert "first" not in out and 'forward_token = "second"' in out
+
+
+def test_the_result_is_loadable_and_complete(tmp_path):
+    from whoop_bridge.config import Config
+    path = tmp_path / "config.toml"
+    path.write_text(BASE_CONFIG)
+    from whoop_bridge.cli import _write_pairing
+    _write_pairing(path, "https://strap.example.com",
+                   {"token": "tok", "ingest_url": "https://strap.example.com/ingest"})
+    cfg = Config.load(path)
+    assert cfg.forward_token == "tok"
+    assert cfg.validate() == []          # nothing left to fill in
+
+
+def test_pairing_into_a_missing_config_still_works(tmp_path):
+    from whoop_bridge.cli import _write_pairing
+    from whoop_bridge.config import Config
+    path = tmp_path / "config.toml"
+    _write_pairing(path, "https://strap.example.com",
+                   {"token": "tok", "ingest_url": "https://strap.example.com/ingest"})
+    cfg = Config.load(path)
+    assert cfg.forward_token == "tok"
+    assert cfg.forward_url == "https://strap.example.com/ingest"
