@@ -81,10 +81,22 @@ jobs:
           $size = (Get-Item dist/Strap.exe).Length / 1MB
           Write-Host "Strap.exe is $([math]::Round($size,1)) MB"
           if ($size -gt 200) { throw "unexpectedly large: check the excludes in strap.spec" }
-          & dist/Strap.exe --check
-          if ($LASTEXITCODE -ne 0) {
+          # Start-Process, not `&`. Strap.exe is built console=False so that no
+          # black window appears at logon, and a windowed Windows executable
+          # detaches from the console immediately -- `&` returns straight away
+          # and $LASTEXITCODE then describes something else entirely. This was
+          # reported as a missing module while the check was in fact printing
+          # "ok: 9 required modules present".
+          $out = Join-Path $env:RUNNER_TEMP "check-out.txt"
+          $err = Join-Path $env:RUNNER_TEMP "check-err.txt"
+          $proc = Start-Process -FilePath (Resolve-Path dist/Strap.exe) `
+                    -ArgumentList "--check" -Wait -PassThru -NoNewWindow `
+                    -RedirectStandardOutput $out -RedirectStandardError $err
+          Get-Content $out -ErrorAction SilentlyContinue
+          Get-Content $err -ErrorAction SilentlyContinue
+          if ($proc.ExitCode -ne 0) {
             throw "The built exe is missing something it needs -- see the list above. " +
-                  "Do not silence this by adding the module to `excludes` in " +
+                  "Do not silence this by adding the module to ``excludes`` in " +
                   "windows/strap.spec: that is what makes it missing."
           }
 
