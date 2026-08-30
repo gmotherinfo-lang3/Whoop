@@ -7,6 +7,7 @@ not an edge case -- glancing at a notification and coming back does it.
 from __future__ import annotations
 
 import json, os, shutil, sys, time
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 from harness import (CHROME, Client, OWNER_EMAIL, OWNER_PASSWORD, Proc, WORK,
@@ -42,7 +43,12 @@ try:
     assert wait_http(f"{LAN}/healthz")
     owner = Client(LAN)
     owner.sign_up_owner()
-    open(CFG, "w").write(open(CFG).read().replace("__PAIRED__", owner.pair_a_laptop()))
+    # Read first, then write. `open(CFG, "w")` is evaluated before its
+    # argument, so writing and reading in one expression truncates the file
+    # before it is read -- which emptied the config and left the bridge
+    # posting with no key at all.
+    _cfg = Path(CFG).read_text().replace("__PAIRED__", owner.pair_a_laptop())
+    Path(CFG).write_text(_cfg)
     # Seed a little history so every tab has something to draw.
     seed = Proc([sys.executable, f"{WORK}/laptop.py",
                  "--config", CFG,

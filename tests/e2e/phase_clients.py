@@ -138,21 +138,24 @@ try:
 
     if mine:
         aid = mine[0]["id"]
-        status, _ = jget(f"{TUNNEL}/api/activities/{aid}",
-                         method="PATCH", cookie="CF_Authorization=valid-session",
-                         data=json.dumps({"note": "edited on the phone"}).encode(),
-                         headers={"Content-Type": "application/json"})
+        # Through the tunnel, so both credentials are needed: Cloudflare's at
+        # the edge and the app's session behind it.
+        phone_api = Client(TUNNEL)
+        phone_api.cookie = "CF_Authorization=valid-session; " + owner.cookie
+
+        status, _ = phone_api.call(f"/api/activities/{aid}", method="PATCH",
+                                   data={"note": "edited on the phone"})
         _, acts = owner.call(f"/api/activities?date={TODAY}&detect=false")
         edited = [a for a in acts["activities"] if a["id"] == aid]
         check("editing from the phone works through the tunnel",
               status == 200 and edited and edited[0]["note"] == "edited on the phone",
-              str(edited)[:160])
+              f"status={status} {str(edited)[:130]}")
 
-        status, _ = jget(f"{TUNNEL}/api/activities/{aid}", method="DELETE",
-                         cookie="CF_Authorization=valid-session")
+        status, _ = phone_api.call(f"/api/activities/{aid}", method="DELETE")
         _, acts = owner.call(f"/api/activities?date={TODAY}&detect=false")
         live = [a for a in acts["activities"] if a["id"] == aid and not a.get("deleted")]
-        check("deleting from the phone works", status == 200 and not live, str(acts)[:160])
+        check("deleting from the phone works", status == 200 and not live,
+              f"status={status} {str(acts)[:130]}")
 
     # --- intake from the phone ---------------------------------------------
     print("\n[phase 6c] the phone logs caffeine and alcohol")
