@@ -190,6 +190,11 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hm .c .v.none{color:var(--muted);font-weight:400}
 
+.method{font-size:10px;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--muted);opacity:.75;margin-bottom:12px}
+.reading{margin-top:10px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.reading b{color:var(--ink);font-weight:650}
+
 /* ---- settings ---- */
 .setrow{margin-bottom:14px}
 .setrow label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1.3px;
@@ -889,6 +894,24 @@ function hmIcon(kind){ return icon({resp:"lungs",spo2:"droplet",rhr:"heart",
 // the honest headline is the only calibration-free thing available: how far
 // today sits from your own normal. The count itself is kept, quietly, because
 // it is what the deviation was computed from.
+// Three numbers out of 100 told nobody anything, and "RHR 40" beside a Health
+// Monitor reading "RHR 51 bpm" read as the same number disagreeing with
+// itself. What someone actually wants to know is which part is holding the
+// score back, so that is what this says.
+const PART_NAMES = {hrv: "HRV", resting_hr: "resting heart rate", sleep: "sleep"};
+
+function recoveryReason(parts){
+  const scored = Object.entries(parts || {})
+    .filter(([k, v]) => PART_NAMES[k] && typeof v === "number");
+  if(scored.length < 2) return "";
+  scored.sort((a, b) => a[1] - b[1]);
+  const [worstKey, worst] = scored[0];
+  const [bestKey, best] = scored[scored.length - 1];
+  if(best - worst < 12) return "· every part looking similar today";
+  if(worst >= 67) return `· ${PART_NAMES[bestKey]} strongest, nothing dragging`;
+  return `· ${PART_NAMES[worstKey]} is what is holding it back`;
+}
+
 function hmCell(kind, label, value, baseline, unit, higherBetter, raw){
   if(value===null||value===undefined)
     return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
@@ -1013,13 +1036,7 @@ async function renderToday(el, stale, quiet){
         <span class="dot" style="background:${band.c}"></span>${band.t}
         <span class="muted" style="margin-left:6px;font-weight:400">
           ${t.recovery.score==null ? esc(t.recovery.note||"")
-            /* These are the three 0-100 contributions that make up the recovery
-               score, NOT the measurements. Printing them bare as "HRV 36" beside
-               a Health Monitor reading "HRV 53 ms" looked like the same number
-               disagreeing with itself. */
-            : `· from HRV ${fmt(t.recovery.components.hrv)}, RHR ${fmt(
-                 t.recovery.components.resting_hr)}, sleep ${fmt(
-                 t.recovery.components.sleep)} <span style="opacity:.65">(each /100)</span>`}</span>
+            : esc(recoveryReason(t.recovery.components))}</span>
       </div>
     </div>
 
@@ -1057,8 +1074,7 @@ async function renderToday(el, stale, quiet){
         t.sleep.performance_pct!=null?`${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h goal`:"none detected",
         m => m>=60 ? `${Math.floor(m/60)}h ${Math.round(m%60)}m` : `${Math.round(m)}m`)}
       ${statTile("Strain", fmt(t.strain.score,1), "/ 21", t.strain.score,
-        prev&&prev.strain.score, true,
-        t.strain.score>=15?"hard day":t.strain.score>=9?"moderate":"light")}
+        prev&&prev.strain.score, true, strainNote(t.strain.score, days))}
     </div>
 
     <div class="card"><h2>HRV — last ${data.days.length} days</h2>
@@ -1116,6 +1132,7 @@ async function renderToday(el, stale, quiet){
     n.innerHTML = `<div style="display:flex;align-items:baseline;gap:9px">
       <span style="font-size:30px;font-weight:700;letter-spacing:-.03em;color:${col}">
         ${st.current.toFixed(1)}</span>
+      <span class="muted" style="font-size:13px">of ${st.scale_max.toFixed(1)}</span>
       <span style="font-weight:650;letter-spacing:1.2px;text-transform:uppercase;
         font-size:11px;color:${col}">${esc(st.band)}</span></div>
     <div class="zonebar">${[["low",css("--good")],["medium",css("--warn")],["high",css("--crit")]]
@@ -1172,6 +1189,28 @@ function wireRingBar(){
   window.removeEventListener("scroll", window.__ringScroll);
   window.__ringScroll = onScroll;
   window.addEventListener("scroll", onScroll, {passive:true});
+}
+
+// "7.9 / 21" and the word "light" say nothing about whether that is a normal
+// day for you. Twenty-one is the top of the scale, not a target, and most
+// people never go near it -- so the useful comparison is your own usual day.
+function typical(days, pick){
+  const values = (days || []).map(pick).filter(v => typeof v === "number");
+  if(values.length < 5) return null;
+  values.sort((a, b) => a - b);
+  return values[Math.floor(values.length / 2)];
+}
+
+function strainNote(score, days){
+  const usual = typical(days, d => d.strain && d.strain.score);
+  if(score == null) return "";
+  if(usual == null)
+    return score >= 15 ? "hard day" : score >= 9 ? "moderate" : "light";
+  const label = score >= 15 ? "hard day" : score >= 9 ? "moderate" : "light";
+  const gap = score - usual;
+  if(Math.abs(gap) < Math.max(1.5, usual * 0.15))
+    return `${label} · about your usual ${fmt(usual,1)}`;
+  return `${label} · ${gap > 0 ? "above" : "below"} your usual ${fmt(usual,1)}`;
 }
 
 function statTile(label, value, unit, now, before, higherBetter, note, deltaFmt){
@@ -1580,6 +1619,42 @@ function statLine(label, value, sub){
     <div class="bl-v">${value}</div>${sub?`<div class="bl-s">${sub}</div>`:""}</div>`;
 }
 
+// Every card on this tab was named after the method rather than the question
+// it answers -- "Autonomic balance", "Circadian phase", "Recovery velocity".
+// The proper name is kept underneath, because it is what you would search for
+// and hiding it would be a different kind of dishonesty, but the heading is
+// now the thing you actually wanted to know.
+// A number on a scale nobody knows is not information. Each of these says, in
+// a sentence, what this particular value means -- which is the thing the
+// scale bar underneath was being asked to convey on its own and could not.
+function readAlpha1(alpha){
+  if(alpha >= 0.9)
+    return "<b>Relaxed.</b> Your heart rhythm has its usual structure — what a rested night looks like.";
+  if(alpha >= 0.75)
+    return "<b>Settled.</b> Normal resting structure, toward the working end.";
+  if(alpha >= 0.5)
+    return "<b>Working.</b> The pattern you would see part-way through effort, or on a tired day.";
+  return "<b>Under load.</b> The rhythm looks like hard exercise. At rest, that usually means fatigue or illness.";
+}
+
+function readEntropy(value){
+  if(value >= 1.5) return "Varied and unpredictable, which is the healthy direction.";
+  if(value >= 1.0) return "Moderately varied.";
+  return "Unusually regular. A very steady rhythm at rest is not a good sign.";
+}
+
+function readRatio(ratio){
+  if(ratio < 0.8) return "<b>Doing less than usual.</b> Fine for a rest week; a long stretch here loses fitness.";
+  if(ratio <= 1.3) return "<b>In step.</b> This week is about what your last month prepared you for.";
+  if(ratio <= 1.5) return "<b>Ramping up.</b> Noticeably more than you are used to — worth easing off if it holds.";
+  return "<b>A big jump.</b> Well beyond your recent normal, which is when people get hurt.";
+}
+
+function askedHeading(question, method){
+  return `<h2 style="margin-bottom:2px">${esc(question)}</h2>
+    <div class="method">${esc(method)}</div>`;
+}
+
 function notReady(reason){
   return `<div class="muted" style="padding:6px 0">${esc(reason || "Not enough data yet.")}</div>`;
 }
@@ -1607,22 +1682,25 @@ async function renderBody(el, stale, quiet){
       and whether your own is moving.</div>
     </div>
 
-    <div class="card"><h2>Autonomic balance</h2>
+    <div class="card">${askedHeading('Is your heart rhythm relaxed or working?', 'DFA α1 and sample entropy')}
       ${dfa.usable ? `
         <div class="bigstat" style="color:${band[dfa.band]||css('--muted')}">
           ${dfa.alpha1}<span>DFA α1</span></div>
-        <div class="muted" style="margin-top:4px">${esc(dfa.band)} · from
+        <div class="reading">${readAlpha1(dfa.alpha1)}</div>
+        <div class="muted" style="margin-top:6px;font-size:12px">${esc(dfa.band)} · from
           ${dfa.beats} clean beats over ${esc(d.hrv_nonlinear.source.replace("_"," "))}
           · ${(dfa.artifact_rate*100).toFixed(1)}% artifacts</div>
         <div class="scale"><i style="left:0;width:33%;background:${css('--crit')}"></i>
           <i style="left:33%;width:25%;background:${css('--warn')}"></i>
           <i style="left:58%;width:42%;background:${css('--good')}"></i>
           <span class="mark" style="left:${Math.max(0,Math.min(100,dfa.alpha1/1.5*100))}%"></span></div>
-        <div class="scalekey"><span>0 · threshold</span><span>0.75</span><span>1.5 · correlated</span></div>
+        <div class="scalekey"><span>0 · like hard exercise</span><span>0.75</span>
+          <span>1.5 · fully rested</span></div>
       ` : notReady(dfa.reason)}
       ${se.usable ? `<div class="bl" style="margin-top:14px">
-        <div class="bl-k">Sample entropy</div><div class="bl-v">${se.sample_entropy}</div>
-        <div class="bl-s">higher = less predictable rhythm</div></div>` : ""}
+        <div class="bl-k">How varied the rhythm is</div>
+        <div class="bl-v">${se.sample_entropy}<span>sample entropy</span></div>
+        <div class="bl-s">${readEntropy(se.sample_entropy)}</div></div>` : ""}
       <details class="more"><summary>what this measures</summary>
         <p>RMSSD says how much beat-to-beat variability there is. DFA α1 describes its
         structure — whether the variation is correlated or random. Above 0.75 is the
@@ -1633,7 +1711,7 @@ async function renderBody(el, stale, quiet){
         noisier.</p></details>
     </div>
 
-    <div class="card"><h2>Circadian phase</h2>
+    <div class="card">${askedHeading('Are you sleeping at your body\\'s low point?', 'Circadian phase')}
       ${cir.usable ? `
         <div class="bl"><div class="bl-k">Lowest heart rate</div>
           <div class="bl-v" style="color:${cir.aligned?css('--good'):css('--warn')}">
@@ -1649,7 +1727,7 @@ async function renderBody(el, stale, quiet){
       ` : notReady(cir.reason)}
     </div>
 
-    <div class="card"><h2>Recovery velocity</h2>
+    <div class="card">${askedHeading('How quickly does your heart settle after effort?', 'Heart-rate recovery')}
       ${hrr.usable ? `
         <div class="bigstat" style="color:${
           hrr.hrr_60s_band==="strong"?css("--good"):hrr.hrr_60s_band==="typical"?css("--warn"):css("--crit")}">
@@ -1665,7 +1743,7 @@ async function renderBody(el, stale, quiet){
       ` : notReady(hrr.reason)}
     </div>
 
-    <div class="card"><h2>Training load</h2>
+    <div class="card">${askedHeading('Are you training more than you are used to?', 'Acute:chronic workload ratio')}
       ${ac.usable ? `
         <div class="bigstat" style="color:${
           ac.band==="optimal"?css("--good"):ac.band==="spike"?css("--crit"):css("--warn")}">
@@ -1681,7 +1759,7 @@ async function renderBody(el, stale, quiet){
       ` : notReady(ac.reason)}
     </div>
 
-    <div class="card"><h2>Today's strain target</h2>
+    <div class="card">${askedHeading('How hard should today be?', 'Strain target')}
       ${tgt.usable ? `
         <div class="bigstat" style="color:${css('--strain')}">${tgt.target}
           <span>of 21 · aim ${tgt.range[0]}–${tgt.range[1]}</span></div>
@@ -1689,7 +1767,7 @@ async function renderBody(el, stale, quiet){
       ` : notReady(tgt.reason)}
     </div>
 
-    <div class="card"><h2>Sleep debt payback</h2>
+    <div class="card">${askedHeading('How do you catch up on the sleep you owe?', 'Sleep debt payback')}
       ${deb.options && deb.options.length ? `
         <div class="bigstat" style="color:${css('--sleep')}">
           ${(deb.debt_minutes/60).toFixed(1)}<span>hours owed</span></div>
@@ -1707,7 +1785,7 @@ async function renderBody(el, stale, quiet){
       ` : `<div class="muted">${esc(deb.note || "No meaningful debt right now.")}</div>`}
     </div>
 
-    <div class="card"><h2>Effort efficiency</h2>
+    <div class="card">${askedHeading('Are the same workouts getting easier?', 'Heart rate for the same output')}
       ${eff.usable ? eff.activities.map(a=>`<div class="bl">
           <div class="bl-k" style="text-transform:capitalize">${esc(a.activity)}</div>
           <div class="bl-v" style="color:${
