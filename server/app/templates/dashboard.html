@@ -572,10 +572,70 @@ function hhmm(u){ return new Date(u*1000).toLocaleTimeString([],{hour:"2-digit",
 function say(sel,text){ const n=$(sel); if(n) n.textContent=text; }
 function esc(s){ return String(s??"").replace(/[&<>"]/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-async function api(path,opts){
-  const r = await fetch(path,opts);
-  if(!r.ok){ let m; try{ m=(await r.json()).detail; }catch(_){ m="HTTP "+r.status; } throw new Error(m); }
+// --- reads are cached; the network is the slow part ------------------------
+// The server answers in tens of milliseconds. What made the app feel slow was
+// round trips: every tab switch threw its content away and refetched, and over
+// a tunnel from a phone that is a few hundred milliseconds of blank skeleton
+// each time, five times over on the Today tab.
+//
+// So a read is served from the last answer straight away and refreshed behind
+// it. Switching tabs is then instant and the numbers correct themselves a
+// moment later, rather than everything waiting on the slowest request. Writes
+// are never cached, and they clear the cache so the next read is honest.
+const FRESH_MS = 20000;      // recent enough to use without refetching
+const STALE_MS = 15 * 60000; // older than this, wait for the network instead
+const apiCache = new Map();
+const inFlight = new Map();
+
+function cacheKey(path){ return path; }
+
+async function fetchJSON(path, opts){
+  const r = await fetch(path, opts);
+  if(!r.ok){
+    let m; try{ m = (await r.json()).detail; }catch(_){ m = "HTTP " + r.status; }
+    throw new Error(m);
+  }
   return r.json();
+}
+
+function revalidate(path){
+  const key = cacheKey(path);
+  if(inFlight.has(key)) return inFlight.get(key);
+  const p = fetchJSON(path).then(data => {
+    const prev = apiCache.get(key);
+    apiCache.set(key, {at: Date.now(), data});
+    inFlight.delete(key);
+    // Only repaint if the answer actually changed; a quiet re-render that
+    // draws the same thing is wasted work and can interrupt an animation.
+    if(!prev || JSON.stringify(prev.data) !== JSON.stringify(data))
+      render({quiet: true});
+    return data;
+  }).catch(err => { inFlight.delete(key); throw err; });
+  inFlight.set(key, p);
+  return p;
+}
+
+async function api(path, opts){
+  if(opts && opts.method && opts.method !== "GET"){
+    const out = await fetchJSON(path, opts);
+    apiCache.clear();          // a write can change anything
+    return out;
+  }
+  const key = cacheKey(path), hit = apiCache.get(key);
+  if(hit){
+    const age = Date.now() - hit.at;
+    if(age < FRESH_MS) return hit.data;
+    if(age < STALE_MS){ revalidate(path).catch(()=>{}); return hit.data; }
+  }
+  const key2 = cacheKey(path);
+  if(inFlight.has(key2)) return inFlight.get(key2);
+  const p = fetchJSON(path).then(data => {
+    apiCache.set(key2, {at: Date.now(), data});
+    inFlight.delete(key2);
+    return data;
+  }).catch(err => { inFlight.delete(key2); throw err; });
+  inFlight.set(key2, p);
+  return p;
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
@@ -1858,8 +1918,10 @@ render();
 setInterval(() => {
   if(document.hidden) return;               // no work while the tab is hidden
   const d = currentDetail();
-  if(d === "health" || d === "stress" || (!d && (state.tab === "today" || state.tab === "body")))
+  if(d === "health" || d === "stress" || (!d && (state.tab === "today" || state.tab === "body"))){
+    apiCache.clear();                       // this tick is the one that must hit the network
     render({quiet:true});
+  }
 }, 20000);
 document.addEventListener("visibilitychange", () => {
   if(!document.hidden) render({quiet:true});
