@@ -78,6 +78,10 @@ button,.chip,.arow.head,.dev{transition:transform .12s var(--ease),
   color var(--dur) var(--ease)}
 h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);
   margin:0 0 11px;font-weight:600}
+/* A card that asks a question states it plainly instead: sentence case, at a
+   size you read rather than scan. */
+h2.asks{font-size:15px;text-transform:none;letter-spacing:-.01em;
+  color:var(--ink);font-weight:650;margin-bottom:2px}
 
 /* ---- skeleton loader (pulsing lines, not a spinner) ---- */
 @keyframes shimmer{0%,100%{opacity:.30}50%{opacity:.68}}
@@ -190,8 +194,10 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hm .c .v.none{color:var(--muted);font-weight:400}
 
-.method{font-size:10px;letter-spacing:.6px;text-transform:uppercase;
-  color:var(--muted);opacity:.75;margin-bottom:12px}
+/* The proper name of the method, left exactly as it is written: uppercasing
+   turns "DFA α1" into "DFA Α1", which is a different letter. */
+.method{font-size:11px;letter-spacing:.2px;color:var(--muted);
+  opacity:.8;margin-bottom:12px}
 .reading{margin-top:10px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
 .reading b{color:var(--ink);font-weight:650}
 
@@ -1651,7 +1657,7 @@ function readRatio(ratio){
 }
 
 function askedHeading(question, method){
-  return `<h2 style="margin-bottom:2px">${esc(question)}</h2>
+  return `<h2 class="asks">${esc(question)}</h2>
     <div class="method">${esc(method)}</div>`;
 }
 
@@ -1678,8 +1684,8 @@ async function renderBody(el, stale, quiet){
     <div class="card tappable" data-open="age"><h2 style="display:flex;
       align-items:center;justify-content:space-between">Fitness age
       <span class="go">${icon("chevron_right",15)}</span></h2>
-      <div class="muted">Estimated VO₂ max, the age its population median matches,
-      and whether your own is moving.</div>
+      <div class="muted">How fit your heart is, expressed as the age most people
+      with that fitness are — and whether yours is heading the right way.</div>
     </div>
 
     <div class="card">${askedHeading('Is your heart rhythm relaxed or working?', 'DFA α1 and sample entropy')}
@@ -1711,7 +1717,7 @@ async function renderBody(el, stale, quiet){
         noisier.</p></details>
     </div>
 
-    <div class="card">${askedHeading('Are you sleeping at your body\\'s low point?', 'Circadian phase')}
+    <div class="card">${askedHeading('Does your sleep line up with your body clock?', 'Circadian phase')}
       ${cir.usable ? `
         <div class="bl"><div class="bl-k">Lowest heart rate</div>
           <div class="bl-v" style="color:${cir.aligned?css('--good'):css('--warn')}">
@@ -1747,11 +1753,12 @@ async function renderBody(el, stale, quiet){
       ${ac.usable ? `
         <div class="bigstat" style="color:${
           ac.band==="optimal"?css("--good"):ac.band==="spike"?css("--crit"):css("--warn")}">
-          ${ac.ratio}<span>acute : chronic</span></div>
-        <div class="grid3">
-          ${statLine("Acute", ac.acute, `${ac.acute_days}-day`)}
-          ${statLine("Chronic", ac.chronic, `${ac.chronic_days}-day`)}
-          ${statLine("Band", `<span style="text-transform:capitalize">${esc(ac.band)}</span>`, "")}
+          ${ac.ratio}<span>× your normal</span></div>
+        <div class="reading">${readRatio(ac.ratio)}</div>
+        <div class="grid3" style="margin-top:12px">
+          ${statLine("This week", ac.acute, `${ac.acute_days}-day average`)}
+          ${statLine("Normally", ac.chronic, `${ac.chronic_days}-day average`)}
+          ${statLine("Sweet spot", "0.8–1.3", "×")}
         </div>
         <div class="muted" style="margin-top:10px">${esc(ac.note)}</div>
         <details class="more"><summary>why no injury-risk number</summary>
@@ -1762,20 +1769,25 @@ async function renderBody(el, stale, quiet){
     <div class="card">${askedHeading('How hard should today be?', 'Strain target')}
       ${tgt.usable ? `
         <div class="bigstat" style="color:${css('--strain')}">${tgt.target}
-          <span>of 21 · aim ${tgt.range[0]}–${tgt.range[1]}</span></div>
-        <div class="muted" style="margin-top:8px">${esc(tgt.note)}</div>
+          <span>aim for ${tgt.range[0]}–${tgt.range[1]} today</span></div>
+        <div class="reading">Anything in that range should leave you recovered
+          tomorrow. Well above it usually costs you the next day.</div>
+        <div class="muted" style="margin-top:8px;font-size:12px">${esc(tgt.note)}</div>
       ` : notReady(tgt.reason)}
     </div>
 
     <div class="card">${askedHeading('How do you catch up on the sleep you owe?', 'Sleep debt payback')}
       ${deb.options && deb.options.length ? `
         <div class="bigstat" style="color:${css('--sleep')}">
-          ${(deb.debt_minutes/60).toFixed(1)}<span>hours owed</span></div>
+          ${(deb.debt_minutes/60).toFixed(1)}<span>hours short</span></div>
+        <div class="reading">Built up over the last week against your nightly
+          target. Here is what clearing it would take.</div>
         ${deb.options.map(o=>`<div class="bl">
-          <div class="bl-k">Over ${o.nights} nights</div>
-          <div class="bl-v">+${o.extra_minutes_per_night}<span>min/night</span></div>
-          <div class="bl-s">a ${Math.floor(o.target_minutes_per_night/60)}h
-            ${o.target_minutes_per_night%60}m target</div></div>`).join("")}
+          <div class="bl-k">If you take ${o.nights} nights</div>
+          <div class="bl-v">${Math.floor(o.target_minutes_per_night/60)}h
+            ${o.target_minutes_per_night%60}m<span>a night</span></div>
+          <div class="bl-s">${o.extra_minutes_per_night} minutes more than your
+            target, every night for ${o.nights}</div></div>`).join("")}
         <details class="more"><summary>how this is modelled</summary>
           <p>Sleep debt does not clear one-for-one, so extra sleep pays it down at
           ${Math.round((deb.model?.payback_efficiency ?? 0.55)*100)}% of face value and
@@ -1790,8 +1802,13 @@ async function renderBody(el, stale, quiet){
           <div class="bl-k" style="text-transform:capitalize">${esc(a.activity)}</div>
           <div class="bl-v" style="color:${
             a.direction==="improving"?css("--good"):a.direction==="declining"?css("--crit"):css("--muted")}">
-            ${a.hr_change_per_week>0?"+":""}${a.hr_change_per_week}<span>bpm/week</span></div>
-          <div class="bl-s">${esc(a.note)} ${a.bouts} bouts over ${a.span_days} days.</div>
+            ${a.hr_change_per_week>0?"+":""}${a.hr_change_per_week}<span>bpm a week</span></div>
+          <div class="bl-s">${a.hr_change_per_week < 0
+              ? "Your heart rate is falling for the same effort, which is fitness improving."
+              : a.hr_change_per_week > 0
+                ? "Your heart rate is climbing for the same effort — worth watching."
+                : "Holding steady."} ${esc(a.note)} From ${a.bouts} sessions over
+            ${a.span_days} days.</div>
         </div>`).join("")
       : `<div class="muted">Nothing comparable yet.</div>`}
       ${Object.keys(eff.skipped||{}).length?`<div class="muted" style="margin-top:10px">
