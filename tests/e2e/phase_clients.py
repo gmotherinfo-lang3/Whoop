@@ -16,8 +16,9 @@ import time
 import zipfile
 
 sys.path.insert(0, os.path.dirname(__file__))
-from harness import (CHROME, INGEST_TOKEN, Proc, SERVICE_ID, SERVICE_SECRET, WORK, check,
-                     http, jget, report, start_server, start_tunnel, wait_http)
+from harness import (CHROME, Client, INGEST_TOKEN, OWNER_EMAIL, Proc,
+                     SERVICE_ID, SERVICE_SECRET, WORK, check, http, jget,
+                     report, sign_in_browser, start_server, start_tunnel, wait_http)
 from playwright.sync_api import sync_playwright
 
 PORT, TUNNEL_PORT = 8421, 8422
@@ -38,6 +39,9 @@ try:
     assert wait_http(f"{LAN}/healthz"), "server down"
     assert wait_http(f"{TUNNEL}/healthz", cookie="CF_Authorization=valid-session")
 
+    owner = Client(LAN)
+    owner.sign_up_owner()
+    device_token = owner.pair_a_laptop("e2e laptop")
     body = f"cf_access_client_id={SERVICE_ID}&cf_access_client_secret={SERVICE_SECRET}".encode()
     _, zdata, _ = http(f"{TUNNEL}/setup/bundle.zip", method="POST", data=body,
                        cookie="CF_Authorization=valid-session",
@@ -47,6 +51,9 @@ try:
     while len(os.listdir(root)) == 1 and os.path.isdir(f"{root}/{os.listdir(root)[0]}"):
         root = f"{root}/{os.listdir(root)[0]}"
     cfg_path = f"{root}/config.toml"
+    _cfg = open(cfg_path).read().replace('forward_token = ""',
+                                         f'forward_token = "{device_token}"')
+    open(cfg_path, "w").write(_cfg)
 
     # Seed enough history that the views have something to say, then leave a
     # live stream running underneath the browsers for the rest of the phase.
@@ -85,6 +92,8 @@ try:
     lp = laptop.new_page(); watch(lp, "laptop")
     ph = iphone.new_page(); watch(ph, "phone")
 
+    sign_in_browser(lp, LAN)
+    sign_in_browser(ph, TUNNEL)
     lp.goto(LAN + "/", wait_until="networkidle")
     ph.goto(TUNNEL + "/", wait_until="networkidle")
     ph.wait_for_timeout(2500)
@@ -102,7 +111,7 @@ try:
     ph.fill("#jnotes", "logged from the phone on the train")
     ph.click("#jsave"); ph.wait_for_timeout(1500)
 
-    status, entry = jget(f"{LAN}/api/journal/{TODAY}")
+    status, entry = owner.call(f"/api/journal/{TODAY}")
     check("the phone's journal entry reached the server",
           status == 200 and "alcohol" in entry.get("tags", []) and
           "padel" in entry.get("tags", []) and "train" in entry.get("notes", ""),
@@ -123,7 +132,7 @@ try:
     ph.fill("#mnote", "added on the phone")
     ph.click("#madd"); ph.wait_for_timeout(1500)
 
-    status, acts = jget(f"{LAN}/api/activities?date={TODAY}&detect=false")
+    status, acts = owner.call(f"/api/activities?date={TODAY}&detect=false")
     mine = [a for a in acts.get("activities", []) if a.get("note") == "added on the phone"]
     check("the phone's activity was stored", len(mine) == 1, str(acts)[:200])
 
@@ -133,7 +142,7 @@ try:
                          method="PATCH", cookie="CF_Authorization=valid-session",
                          data=json.dumps({"note": "edited on the phone"}).encode(),
                          headers={"Content-Type": "application/json"})
-        _, acts = jget(f"{LAN}/api/activities?date={TODAY}&detect=false")
+        _, acts = owner.call(f"/api/activities?date={TODAY}&detect=false")
         edited = [a for a in acts["activities"] if a["id"] == aid]
         check("editing from the phone works through the tunnel",
               status == 200 and edited and edited[0]["note"] == "edited on the phone",
@@ -141,7 +150,7 @@ try:
 
         status, _ = jget(f"{TUNNEL}/api/activities/{aid}", method="DELETE",
                          cookie="CF_Authorization=valid-session")
-        _, acts = jget(f"{LAN}/api/activities?date={TODAY}&detect=false")
+        _, acts = owner.call(f"/api/activities?date={TODAY}&detect=false")
         live = [a for a in acts["activities"] if a["id"] == aid and not a.get("deleted")]
         check("deleting from the phone works", status == 200 and not live, str(acts)[:160])
 
@@ -150,7 +159,7 @@ try:
     ph.click('[data-tab="journal"]'); ph.wait_for_selector("#iadd", timeout=20000)
     ph.select_option("#isub", index=0); ph.fill("#itime", "09:30")
     ph.click("#iadd"); ph.wait_for_timeout(1200)
-    status, intake = jget(f"{LAN}/api/intake?date={TODAY}")
+    status, intake = owner.call(f"/api/intake?date={TODAY}")
     check("intake logged from the phone is stored",
           status == 200 and len(intake.get("entries", [])) >= 1, str(intake)[:200])
 

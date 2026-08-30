@@ -9,7 +9,8 @@ from __future__ import annotations
 import json, os, shutil, sys, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from harness import (CHROME, INGEST_TOKEN, Proc, WORK, check, jget, report, start_server,
+from harness import (CHROME, Client, OWNER_EMAIL, OWNER_PASSWORD, Proc, WORK,
+                     check, jget, report, sign_in_browser, start_server,
                      wait_http)
 from playwright.sync_api import sync_playwright
 
@@ -20,7 +21,7 @@ TODAY = time.strftime("%Y-%m-%d", time.gmtime())
 shutil.rmtree(STATE, ignore_errors=True); os.makedirs(STATE)
 open(CFG, "w").write(
     "[device]\naddress = \"AA:BB:CC:DD:EE:FF\"\n\n"
-    f"[forward]\nforward_url = \"{LAN}/ingest\"\nforward_token = \"{INGEST_TOKEN}\"\n")
+    f"[forward]\nforward_url = \"{LAN}/ingest\"\nforward_token = \"__PAIRED__\"\n")
 
 srv = start_server(PORT, DB, log=f"{STATE}/server.log")
 stream = None
@@ -39,6 +40,9 @@ def background_and_return(page):
 
 try:
     assert wait_http(f"{LAN}/healthz")
+    owner = Client(LAN)
+    owner.sign_up_owner()
+    open(CFG, "w").write(open(CFG).read().replace("__PAIRED__", owner.pair_a_laptop()))
     # Seed a little history so every tab has something to draw.
     seed = Proc([sys.executable, f"{WORK}/laptop.py",
                  "--config", CFG,
@@ -63,6 +67,7 @@ try:
     ph = ctx.new_page()
     errs = []
     ph.on("pageerror", lambda e: errs.append(str(e)))
+    sign_in_browser(ph, LAN)
     ph.goto(LAN + "/", wait_until="networkidle")
 
     print("\n[phase 8] work in progress must survive a background refresh")
@@ -86,7 +91,7 @@ try:
 
     # Now save, and the refresh should be free to resume.
     ph.click("#jsave"); ph.wait_for_timeout(1200)
-    _, entry = jget(f"{LAN}/api/journal/{TODAY}")
+    _, entry = owner.call(f"/api/journal/{TODAY}")
     check("saving stores everything that was typed",
           entry.get("notes") == note and set(entry.get("tags", [])) >= {"padel", "alcohol"},
           str(entry)[:180])
@@ -110,7 +115,7 @@ try:
           and ph.input_value("#mstart") == "19:00",
           f"note={ph.input_value('#mnote')!r} start={ph.input_value('#mstart')!r}")
     ph.click("#madd"); ph.wait_for_timeout(1500)
-    _, acts = jget(f"{LAN}/api/activities?date={TODAY}&detect=false")
+    _, acts = owner.call(f"/api/activities?date={TODAY}&detect=false")
     check("the activity saved with the values that were typed",
           any(a.get("note") == "five a side, hard game" for a in acts.get("activities", [])),
           str(acts)[:200])

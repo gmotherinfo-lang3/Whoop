@@ -190,8 +190,9 @@ class ManualActivity(BaseModel):
     note: str = ""
 
 
-def _load_model() -> ActivityClassifier | None:
-    stored = db.load_model(MODEL_NAME)
+def _load_model(store: UserStore) -> ActivityClassifier | None:
+    """That account's own classifier. Everyone trains their own."""
+    stored = store.db.load_model(MODEL_NAME)
     return ActivityClassifier.from_payload(stored["payload"]) if stored else None
 
 
@@ -227,7 +228,10 @@ def api_device(store: UserStore = Depends(my_store)) -> dict[str, Any]:
 
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
-    return {"ok": True, **store.db.stats()}
+    """A liveness probe, so deliberately unauthenticated -- and therefore
+    deliberately says nothing about anybody's data."""
+    return {"ok": True, "accounts": accounts.count(),
+            "needs_owner": accounts.needs_owner()}
 
 
 @app.get("/api/day/{date}")
@@ -286,7 +290,7 @@ def api_journal_range(days: int = Query(30, ge=1, le=365), store: UserStore = De
 
 
 # --- activities -------------------------------------------------------------
-def _detect_for_day(day: datetime) -> int:
+def _detect_for_day(store: UserStore, day: datetime) -> int:
     """Run detection for a day and store any new bouts. Idempotent."""
     lo, hi = store.bounds(day)
     records = store.db.range(lo, hi)
@@ -294,7 +298,7 @@ def _detect_for_day(day: datetime) -> int:
         return 0
     summary = summarise_day(records, max_hr=store.max_hr, sleep_need_h=store.sleep_need_h)
     resting = summary.get("heart_rate", {}).get("resting") if summary.get("has_data") else None
-    model = _load_model()
+    model = _load_model(store)
     found = 0
     for bout in find_bouts(records, resting, store.max_hr):
         label, confidence, _ = classify(bout["features"], bout.get("hint"), model)
@@ -308,9 +312,9 @@ def _detect_for_day(day: datetime) -> int:
 def api_activities(date: str, detect: bool = True, store: UserStore = Depends(my_store)) -> dict[str, Any]:
     day = _parse_date(date, store)
     if detect:
-        _detect_for_day(day)
+        _detect_for_day(store, day)
     lo, hi = store.bounds(day)
-    model = _load_model()
+    model = _load_model(store)
     return {
         "date": date,
         "activities": store.db.activities_range(lo, hi),
@@ -321,7 +325,7 @@ def api_activities(date: str, detect: bool = True, store: UserStore = Depends(my
 
 @app.post("/api/activities/detect")
 def api_detect(date: str, store: UserStore = Depends(my_store)) -> dict[str, Any]:
-    return {"ok": True, "date": date, "bouts": _detect_for_day(_parse_date(date, store))}
+    return {"ok": True, "date": date, "bouts": _detect_for_day(store, _parse_date(date, store))}
 
 
 @app.post("/api/activities")
@@ -384,7 +388,7 @@ def api_learning(days: int = Query(30, ge=7, le=365), store: UserStore = Depends
         # Nothing detected yet means no basis for a rate estimate. Run detection
         # over a bounded recent window so the first visit shows a real ETA.
         for i in range(1, 8):
-            _detect_for_day(today - timedelta(days=i))
+            _detect_for_day(store, today - timedelta(days=i))
         detected = len(store.db.activities_range(lo, hi))
     activity = activity_learning_status(
         store.db.labelled_activities(), detected, days,

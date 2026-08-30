@@ -15,13 +15,14 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import INGEST_TOKEN, WORK, check, http, jget, report, start_server, wait_http
+from harness import (Client, WORK, check, http, jget, report, start_server,
+                     wait_http)
 
 PORT = 8431
 LAN = f"http://127.0.0.1:{PORT}"
 STATE = f"{WORK}/state4"
 DB = f"{STATE}/whoop.db"
-AUTH = {"Authorization": f"Bearer {INGEST_TOKEN}", "Content-Type": "application/json"}
+AUTH: dict = {"Content-Type": "application/json"}   # filled in after pairing
 TODAY = time.strftime("%Y-%m-%d", time.gmtime())
 
 shutil.rmtree(STATE, ignore_errors=True)
@@ -50,6 +51,9 @@ def rec(unix, hr=72, **kw):
 
 try:
     assert wait_http(f"{LAN}/healthz"), "server down"
+    owner = Client(LAN)
+    owner.sign_up_owner()
+    AUTH["Authorization"] = "Bearer " + owner.pair_a_laptop()
     now = int(time.time())
 
     print("\n[phase 7] hostile and malformed input")
@@ -59,7 +63,7 @@ try:
     check("records from a strap with a lost clock are accepted, not fatal",
           status == 200, f"status={status} {body}")
     check("server still healthy after 1970 timestamps", alive())
-    status, body = jget(f"{LAN}/api/summary?days=2")
+    status, body = owner.call("/api/summary?days=2")
     check("a lost-clock day does not corrupt today's summary",
           status == 200 and isinstance(body.get("days"), list), str(body)[:140])
 
@@ -77,7 +81,7 @@ try:
           status == 200 and body.get("inserted") == 300, str(body))
 
     time.sleep(4)   # past the ingest coalescing window
-    status, day = jget(f"{LAN}/api/day/{TODAY}")
+    status, day = owner.call(f"/api/day/{TODAY}")
     check("the day computes normally from out-of-order records",
           status == 200 and (day.get("heart_rate") or {}).get("avg"), str(day)[:160])
 
@@ -113,12 +117,12 @@ try:
                          rec(now - 5120, 72, rr_intervals_ms=[0, 0, 0]),
                          rec(now - 5180, 72, rr_intervals_ms=[999999, 1])])
     check("absurd values are accepted", status == 200, f"status={status}")
-    status, day = jget(f"{LAN}/api/day/{TODAY}")
+    status, day = owner.call(f"/api/day/{TODAY}")
     hrv = (day.get("hrv") or {}).get("rmssd_ms")
     check("a zero-RR record does not produce a fake HRV of 0",
           hrv is None or hrv > 0, f"rmssd={hrv}")
     check("every endpoint still answers after absurd values",
-          all(jget(LAN + p)[0] == 200 for p in
+          all(owner.call(p)[0] == 200 for p in
               ["/api/health-monitor", "/api/stress", "/api/fitness-age",
                "/api/advanced", "/api/advice"]))
 
@@ -148,42 +152,32 @@ try:
                          for i in range(20)])
     check("unparsed frames are stored without breaking the day", status == 200, str(body))
     check("the day still computes with unparsed frames present",
-          jget(f"{LAN}/api/day/{TODAY}")[0] == 200)
+          owner.call(f"/api/day/{TODAY}")[0] == 200)
 
     # --- the write endpoints, from a phone with fat fingers ----------------
     print("\n[phase 7b] bad writes from the app itself")
-    status, _ = jget(f"{LAN}/api/journal/not-a-date", method="PUT",
-                     data=json.dumps({"tags": [], "amounts": {}, "notes": ""}).encode(),
-                     headers={"Content-Type": "application/json"})
+    status, _ = owner.call(f"/api/journal/not-a-date", method="PUT", data={"tags": [], "amounts": {}, "notes": ""})
     check("a malformed journal date is refused", status in (400, 422), f"status={status}")
 
-    status, _ = jget(f"{LAN}/api/activities", method="POST",
-                     data=json.dumps({"start_unix": now, "end_unix": now - 3600,
-                                      "activity_type": "run"}).encode(),
-                     headers={"Content-Type": "application/json"})
+    status, _ = owner.call(f"/api/activities", method="POST", data={"start_unix": now, "end_unix": now - 3600,
+                                      "activity_type": "run"})
     check("an activity that ends before it starts is refused",
           status in (400, 422), f"status={status}")
 
-    status, _ = jget(f"{LAN}/api/activities/999999", method="PATCH",
-                     data=json.dumps({"note": "nope"}).encode(),
-                     headers={"Content-Type": "application/json"})
+    status, _ = owner.call(f"/api/activities/999999", method="PATCH", data={"note": "nope"})
     check("editing an activity that does not exist is a 404", status == 404, f"status={status}")
 
-    status, _ = jget(f"{LAN}/api/intake", method="POST",
-                     data=json.dumps({"at": "whenever", "substance": "caffeine",
-                                      "amount": 1}).encode(),
-                     headers={"Content-Type": "application/json"})
+    status, _ = owner.call(f"/api/intake", method="POST", data={"at": "whenever", "substance": "caffeine",
+                                      "amount": 1})
     check("a malformed intake time is refused", status in (400, 422), f"status={status}")
 
     huge = "x" * 200_000
-    status, _ = jget(f"{LAN}/api/journal/{TODAY}", method="PUT",
-                     data=json.dumps({"tags": [f"t{i}" for i in range(500)],
-                                      "amounts": {}, "notes": huge}).encode(),
-                     headers={"Content-Type": "application/json"})
+    status, _ = owner.call(f"/api/journal/{TODAY}", method="PUT", data={"tags": [f"t{i}" for i in range(500)],
+                                      "amounts": {}, "notes": huge})
     check("an enormous journal entry is handled", status in (200, 413, 422), f"status={status}")
     check("server still healthy after an enormous journal entry", alive())
 
-    status, body = jget(f"{LAN}/api/summary?days=9999")
+    status, body = owner.call("/api/summary?days=9999")
     check("an out-of-range query parameter is refused, not obeyed",
           status == 422, f"status={status}")
 finally:
