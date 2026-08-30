@@ -46,6 +46,7 @@ analysis = Analysis(
     # Trimming what a tray app cannot need keeps the download reasonable.
     excludes=["matplotlib", "numpy", "scipy", "pandas", "pytest", "IPython"],
     noarchive=False,
+    collect_all=["winrt"],
 )
 pyz = PYZ(analysis.pure)
 
