@@ -10,8 +10,9 @@ import sys
 import zipfile
 
 sys.path.insert(0, os.path.dirname(__file__))
-from harness import (INGEST_TOKEN, REPO, SERVICE_ID, SERVICE_SECRET, WORK, check,
-                     http, jget, report, start_server, start_tunnel, wait_http)
+from harness import (Client, INGEST_TOKEN, OWNER_EMAIL, REPO, SERVICE_ID,
+                     SERVICE_SECRET, WORK, check, http, jget, report,
+                     start_server, start_tunnel, wait_http)
 
 PORT, TUNNEL_PORT = 8401, 8402
 LAN = f"http://127.0.0.1:{PORT}"
@@ -32,24 +33,38 @@ try:
     assert wait_http(f"{TUNNEL}/healthz", cookie=SESSION), "tunnel never came up"
 
     # --- Phase 0: day zero. Nothing has ever been recorded. -----------------
-    print("\n[phase 0] a brand-new install with an empty database")
+    print("\n[phase 0] a brand-new install, before anyone has signed up")
+    status, body = jget(f"{LAN}/api/session")
+    check("the server says it needs an owner", body.get("needs_owner") is True, str(body))
+    status, _, _ = http(f"{LAN}/")
+    check("the app sends you to sign up rather than showing nothing",
+          status == 303, f"status={status}")
+    status, _ = jget(f"{LAN}/api/summary?days=7")
+    check("data is refused before sign-in", status == 401, f"status={status}")
+
+    owner = Client(LAN)
+    owner.sign_up_owner()
+    check("the first visitor becomes the owner",
+          owner.call("/api/me")[1].get("is_owner") is True)
+
+    print("\n[phase 0b] an empty database, signed in")
     for path in ["/api/summary?days=7", "/api/health-monitor", "/api/stress",
                  "/api/fitness-age", "/api/advanced", "/api/insights?days=30",
                  "/api/advice", "/api/learning", "/api/device",
                  "/api/activities?date=2026-08-29", "/api/journal?days=30"]:
-        status, body = jget(LAN + path)
+        status, body = owner.call(path)
         check(f"empty DB: {path} answers cleanly", status == 200,
               f"status={status} {str(body)[:120]}")
 
-    status, _, _ = http(f"{LAN}/")
+    status, _, _ = http(f"{LAN}/", cookie=owner.cookie)
     check("empty DB: dashboard page loads", status == 200, f"status={status}")
 
-    status, body = jget(f"{LAN}/api/stress")
+    status, body = owner.call("/api/stress")
     check("empty DB: stress explains itself rather than showing a number",
           body.get("usable") is False and bool(body.get("reason")),
           str(body)[:160])
 
-    status, body = jget(f"{LAN}/api/fitness-age")
+    status, body = owner.call("/api/fitness-age")
     check("empty DB: fitness age refuses without a resting heart rate",
           body.get("estimate", {}).get("usable") is False, str(body)[:160])
 
@@ -86,7 +101,8 @@ try:
     text = zf.read(cfg_name).decode()
     check("config points at the public hostname, not localhost",
           "whoop.example.com" in text, text[:200].replace("\n", " | "))
-    check("config carries the ingest token", INGEST_TOKEN in text)
+    check("the bundle carries no credential at all",
+          INGEST_TOKEN not in text and 'forward_token = ""' in text)
     check("config forwards to /ingest", "/ingest" in text)
 
     check("no compiled or database files were shipped",
@@ -115,13 +131,27 @@ try:
     from whoop_bridge.config import Config
     cfg = Config.load(os.path.join(root, "config.toml"))
     check("the unpacked config loads with the bridge's own loader",
-          cfg.forward_url.endswith("/ingest") and cfg.forward_token == INGEST_TOKEN,
-          f"url={cfg.forward_url}")
+          cfg.forward_url.endswith("/ingest"), f"url={cfg.forward_url}")
 
     problems = cfg.validate()
-    check("only the strap address is left to fill in",
+    check("what is left is the strap address, which `scan` finds",
           problems == ["no device address set (run `whoop-bridge scan` first)"],
           str(problems))
+
+    # --- pairing replaces the copied secret --------------------------------
+    print("\n[phase 2b] the laptop gets its own key by pairing")
+    status, started = owner.call("/api/pair/start", data={})
+    check("the app issues a pairing code",
+          status == 200 and "-" in started.get("code", ""), str(started)[:80])
+    status, claimed = owner.call("/pair/claim",
+                                 data={"code": started["code"].lower().replace("-", ""),
+                                       "device_name": "e2e laptop"})
+    check("the laptop claims it however the code was typed",
+          status == 200 and claimed.get("token"), str(claimed)[:70])
+    check("the laptop is told whose account it is on",
+          claimed.get("account") == OWNER_EMAIL, str(claimed.get("account")))
+    status, again = owner.call("/pair/claim", data={"code": started["code"]})
+    check("a code cannot be used twice", status == 400, f"status={status}")
 finally:
     tun.stop(); srv.stop()
 

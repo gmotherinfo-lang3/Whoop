@@ -78,6 +78,10 @@ button,.chip,.arow.head,.dev{transition:transform .12s var(--ease),
   color var(--dur) var(--ease)}
 h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);
   margin:0 0 11px;font-weight:600}
+/* A card that asks a question states it plainly instead: sentence case, at a
+   size you read rather than scan. */
+h2.asks{font-size:15px;text-transform:none;letter-spacing:-.01em;
+  color:var(--ink);font-weight:650;margin-bottom:2px}
 
 /* ---- skeleton loader (pulsing lines, not a spinner) ---- */
 @keyframes shimmer{0%,100%{opacity:.30}50%{opacity:.68}}
@@ -179,15 +183,44 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .ringbar.compact .ringcell .cap{color:var(--ink2)}
 
 /* ---- health monitor strip ---- */
-.hm{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.hm .c{text-align:center;padding:9px 3px 8px;border-radius:var(--r-sm);
+.hm{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.hm .c{text-align:center;padding:9px 3px 8px;border-radius:var(--r-sm);min-width:0;
   background:color-mix(in srgb,var(--ink) 4%,transparent)}
 .hm .c svg{opacity:.65;margin-bottom:5px}
 .hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
 .hm .c .v{font-size:18px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;
   letter-spacing:-.02em}
-.hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
+.hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hm .c .v.none{color:var(--muted);font-weight:400}
+
+/* The proper name of the method, left exactly as it is written: uppercasing
+   turns "DFA α1" into "DFA Α1", which is a different letter. */
+.method{font-size:11px;letter-spacing:.2px;color:var(--muted);
+  opacity:.8;margin-bottom:12px}
+.reading{margin-top:10px;font-size:13.5px;line-height:1.5;color:var(--ink2)}
+.reading b{color:var(--ink);font-weight:650}
+
+/* ---- settings ---- */
+.setrow{margin-bottom:14px}
+.setrow label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1.3px;
+  color:var(--muted);margin:0 0 6px}
+.setrow input,.setrow select{width:100%;background:var(--raised);border:1px solid var(--line);
+  color:var(--ink);border-radius:var(--r-sm);padding:11px 12px;font:inherit;
+  -webkit-appearance:none;appearance:none}
+.setrow select{background-image:none}
+.sethint{color:var(--muted);font-size:11.5px;margin-top:5px;line-height:1.45}
+.btn.small{padding:7px 13px;font-size:12.5px;width:auto}
+.paircode{margin-top:14px;padding:16px;border-radius:var(--r-sm);
+  background:color-mix(in srgb,var(--good) 9%,transparent);
+  border:1px solid color-mix(in srgb,var(--good) 28%,transparent)}
+.paircode .code{font-size:30px;font-weight:750;letter-spacing:.14em;color:var(--good);
+  font-variant-numeric:tabular-nums;margin-bottom:8px;text-align:center}
+.paircode input{width:100%;background:var(--bg);border:1px solid var(--line);
+  color:var(--ink);border-radius:var(--r-sm);padding:10px;font:12px/1.4 ui-monospace,monospace;
+  margin-bottom:8px}
+.paircode .muted{font-size:12px;line-height:1.5}
+.paircode .btn{margin-top:10px}
 
 /* ---- detail views ---- */
 .dhead{display:flex;align-items:center;gap:10px;margin:2px 0 14px}
@@ -441,6 +474,7 @@ nav button:active{transform:scale(.96)}
         <span class="led" id="devled"></span>
       </button>
       <button class="icon" id="theme" title="Switch theme" aria-label="Switch theme" data-ic="theme"></button>
+      <button class="icon" id="settings" title="Settings" aria-label="Settings" data-ic="gear"></button>
     </div>
   </header>
   <div id="content"><div class="empty">Loading…</div></div>
@@ -469,6 +503,7 @@ const ACTIVITY_TYPES = ["run","walk","cycle","swim","lift","hiit","yoga","sport"
   "sleep","sedentary","other"];
 // Thin-line icon set, 24x24, 1.5px stroke. No emoji anywhere in the UI.
 const ICONS = {
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-1 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.6 1.6 0 0 0 4.6 15a1.6 1.6 0 0 0-1.47-1H3a2 2 0 1 1 0-4h.11A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.6 1.6 0 0 0 9 4.6a1.6 1.6 0 0 0 1-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 1 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.6 1.6 0 0 0 19.4 9v0a1.6 1.6 0 0 0 1.47 1H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47 1z"/>',
   // --- activities ---
   run:`<circle cx="15.5" cy="4.2" r="2.1"/><path d="M13.6 8.1 10.4 12.4l3.1 2.6-1.1 5.7"/><path d="M10.4 12.4 6.2 13.6 4.4 18"/><path d="M14.2 9.6l3.6 1.7 2.6-1.4"/>`,
   walk:`<circle cx="13.2" cy="4.2" r="2.1"/><path d="M12.4 8.2 10 12.6l2.6 2.3-.7 5.6"/><path d="M10 12.6 7.6 15l-.5 5.2"/><path d="M12.9 9.4l3 1.6"/>`,
@@ -528,7 +563,24 @@ function icon(name, size = 20, extra = "") {
     stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 }
 
-function today(){ return new Date().toISOString().slice(0,10); }
+// A YYYY-MM-DD from the server is a CALENDAR DAY, not an instant. Parsing it
+// as "...T00:00:00Z" makes it midnight UTC, which then renders as the previous
+// day for everyone west of Greenwich -- that is why yesterday's date sat above
+// today's numbers. These build and read plain local dates instead, so the
+// label always matches the string it came from.
+function ymd(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
+       + "-" + String(d.getDate()).padStart(2,"0");
+}
+function dateOf(iso){
+  const [y,m,d] = String(iso).split("-").map(Number);
+  return new Date(y, (m||1)-1, d||1);
+}
+// The server decides which records belong to which day, in ITS zone. If the
+// phone is somewhere else, the phone's idea of "today" would disagree, so the
+// server's answer wins whenever we have it.
+let serverToday = null;
+function today(){ return serverToday || ymd(new Date()); }
 
 // Shaped like the content that is coming, so the layout does not jump.
 const SKELETONS = {
@@ -554,10 +606,76 @@ function hhmm(u){ return new Date(u*1000).toLocaleTimeString([],{hour:"2-digit",
 function say(sel,text){ const n=$(sel); if(n) n.textContent=text; }
 function esc(s){ return String(s??"").replace(/[&<>"]/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-async function api(path,opts){
-  const r = await fetch(path,opts);
-  if(!r.ok){ let m; try{ m=(await r.json()).detail; }catch(_){ m="HTTP "+r.status; } throw new Error(m); }
+// --- reads are cached; the network is the slow part ------------------------
+// The server answers in tens of milliseconds. What made the app feel slow was
+// round trips: every tab switch threw its content away and refetched, and over
+// a tunnel from a phone that is a few hundred milliseconds of blank skeleton
+// each time, five times over on the Today tab.
+//
+// So a read is served from the last answer straight away and refreshed behind
+// it. Switching tabs is then instant and the numbers correct themselves a
+// moment later, rather than everything waiting on the slowest request. Writes
+// are never cached, and they clear the cache so the next read is honest.
+const FRESH_MS = 20000;      // recent enough to use without refetching
+const STALE_MS = 15 * 60000; // older than this, wait for the network instead
+const apiCache = new Map();
+const inFlight = new Map();
+
+function cacheKey(path){ return path; }
+
+async function fetchJSON(path, opts){
+  const r = await fetch(path, opts);
+  if(r.status === 401){
+    // The session expired or was signed out elsewhere. Anything else here
+    // would be an error message the reader can do nothing about.
+    location.href = "/signin";
+    throw new Error("Signed out");
+  }
+  if(!r.ok){
+    let m; try{ m = (await r.json()).detail; }catch(_){ m = "HTTP " + r.status; }
+    throw new Error(m);
+  }
   return r.json();
+}
+
+function revalidate(path){
+  const key = cacheKey(path);
+  if(inFlight.has(key)) return inFlight.get(key);
+  const p = fetchJSON(path).then(data => {
+    const prev = apiCache.get(key);
+    apiCache.set(key, {at: Date.now(), data});
+    inFlight.delete(key);
+    // Only repaint if the answer actually changed; a quiet re-render that
+    // draws the same thing is wasted work and can interrupt an animation.
+    if(!prev || JSON.stringify(prev.data) !== JSON.stringify(data))
+      render({quiet: true});
+    return data;
+  }).catch(err => { inFlight.delete(key); throw err; });
+  inFlight.set(key, p);
+  return p;
+}
+
+async function api(path, opts){
+  if(opts && opts.method && opts.method !== "GET"){
+    const out = await fetchJSON(path, opts);
+    apiCache.clear();          // a write can change anything
+    return out;
+  }
+  const key = cacheKey(path), hit = apiCache.get(key);
+  if(hit){
+    const age = Date.now() - hit.at;
+    if(age < FRESH_MS) return hit.data;
+    if(age < STALE_MS){ revalidate(path).catch(()=>{}); return hit.data; }
+  }
+  const key2 = cacheKey(path);
+  if(inFlight.has(key2)) return inFlight.get(key2);
+  const p = fetchJSON(path).then(data => {
+    apiCache.set(key2, {at: Date.now(), data});
+    inFlight.delete(key2);
+    return data;
+  }).catch(err => { inFlight.delete(key2); throw err; });
+  inFlight.set(key2, p);
+  return p;
 }
 function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
@@ -774,41 +892,79 @@ function hmIcon(kind){ return icon({resp:"lungs",spo2:"droplet",rhr:"heart",
 
 // The raw ADC channels have no real-world unit, so the number alone means
 // nothing. What is readable is how far it sits from your own baseline.
+// Resting HR and HRV arrive in real units. Respiratory rate, blood oxygen and
+// skin temperature arrive as raw sensor counts whose scaling the strap does
+// not document -- "3,067" is not a breathing rate and "513" is not a
+// percentage. Printing them as though they were the measurement made the card
+// look broken and invited reading them as clinical numbers. For those three
+// the honest headline is the only calibration-free thing available: how far
+// today sits from your own normal. The count itself is kept, quietly, because
+// it is what the deviation was computed from.
+// Three numbers out of 100 told nobody anything, and "RHR 40" beside a Health
+// Monitor reading "RHR 51 bpm" read as the same number disagreeing with
+// itself. What someone actually wants to know is which part is holding the
+// score back, so that is what this says.
+const PART_NAMES = {hrv: "HRV", resting_hr: "resting heart rate", sleep: "sleep"};
+
+function recoveryReason(parts){
+  const scored = Object.entries(parts || {})
+    .filter(([k, v]) => PART_NAMES[k] && typeof v === "number");
+  if(scored.length < 2) return "";
+  scored.sort((a, b) => a[1] - b[1]);
+  const [worstKey, worst] = scored[0];
+  const [bestKey, best] = scored[scored.length - 1];
+  if(best - worst < 12) return "· every part looking similar today";
+  if(worst >= 67) return `· ${PART_NAMES[bestKey]} strongest, nothing dragging`;
+  return `· ${PART_NAMES[worstKey]} is what is holding it back`;
+}
+
 function hmCell(kind, label, value, baseline, unit, higherBetter, raw){
   if(value===null||value===undefined)
     return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
       <div class="v none">–</div></div>`;
-  let delta = "";
-  if(baseline){
-    const pct = (value-baseline)/baseline*100;
-    if(Math.abs(pct) >= 0.4){
-      const good = higherBetter ? pct>0 : pct<0;
-      delta = `<div class="d" style="color:${good?css('--good'):css('--crit')}">
-        ${pct>0?"▲":"▼"} ${Math.abs(pct).toFixed(1)}%</div>`;
-    } else {
-      delta = `<div class="d" style="color:var(--muted)">— normal</div>`;
-    }
+
+  const pct = baseline ? (value-baseline)/baseline*100 : null;
+  const flat = pct !== null && Math.abs(pct) < 0.4;
+  const good = pct !== null && (higherBetter ? pct>0 : pct<0);
+  const colour = flat ? "var(--muted)" : good ? css("--good") : css("--crit");
+  const arrow = pct === null ? "" : flat ? "—" : pct>0 ? "▲" : "▼";
+  const magnitude = pct === null ? "" : `${Math.abs(pct).toFixed(1)}%`;
+
+  if(raw){
+    if(pct === null)
+      return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+        <div class="v none">–</div><div class="d">building</div></div>`;
+    // Kept short deliberately: five columns on a phone is about 70px each,
+    // and a longer label here pushed the whole page sideways, which in turn
+    // shifted the fixed tab bar out from under people's thumbs.
+    return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+      <div class="v" style="color:${colour}">${flat ? "—" : arrow + magnitude}</div>
+      <div class="d" title="raw sensor count ${Math.round(value).toLocaleString()}">
+        ${flat ? "normal" : "vs normal"}</div></div>`;
   }
-  const shown = raw ? Math.round(value).toLocaleString() : fmt(value, 0);
+
+  const delta = pct === null ? "" :
+    `<div class="d" style="color:${colour}">${
+      flat ? "— normal" : arrow + " " + magnitude}</div>`;
   return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
-    <div class="v">${shown}</div>${delta}</div>`;
+    <div class="v">${fmt(value, 0)}${unit?`<small>${esc(unit)}</small>`:""}</div>${delta}</div>`;
 }
 
 // ---------- Today ----------
 function shiftDate(days){
-  const d = new Date(state.date + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  const iso = d.toISOString().slice(0,10);
+  const d = dateOf(state.date);
+  d.setDate(d.getDate() + days);
+  const iso = ymd(d);
   if(iso > today()) return;
   state.date = iso; render();
 }
 
 function dateLabel(){
   if(state.date === today()) return "Today";
-  const d = new Date(state.date + "T00:00:00Z");
-  const y = new Date(); y.setUTCDate(y.getUTCDate()-1);
-  if(state.date === y.toISOString().slice(0,10)) return "Yesterday";
-  return d.toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
+  const y = dateOf(today()); y.setDate(y.getDate() - 1);
+  if(state.date === ymd(y)) return "Yesterday";
+  return dateOf(state.date)
+    .toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
 }
 
 function ringBar(t, band){
@@ -845,6 +1001,14 @@ async function renderToday(el, stale, quiet){
     api(`/api/advice?date=${state.date}`).catch(e=>({ready:false,reason:e.message,suggestions:[]}))
   ]);
   if(stale()) return;
+  if(data.today){
+    // Adopt the server's day before anything is labelled with it. If the app
+    // was opened on a date the server no longer calls today -- left open
+    // overnight, say -- move with it rather than showing a stale "Today".
+    const was = serverToday;
+    serverToday = data.today;
+    if(was && state.date === was && was !== data.today) state.date = data.today;
+  }
   const days = data.days.filter(d=>d.has_data);
   const t = data.days.find(d=>d.date===state.date) || days[0];
 
@@ -878,7 +1042,7 @@ async function renderToday(el, stale, quiet){
         <span class="dot" style="background:${band.c}"></span>${band.t}
         <span class="muted" style="margin-left:6px;font-weight:400">
           ${t.recovery.score==null ? esc(t.recovery.note||"")
-            : `· HRV ${fmt(t.recovery.components.hrv)} · RHR ${fmt(t.recovery.components.resting_hr)} · Sleep ${fmt(t.recovery.components.sleep)}`}</span>
+            : esc(recoveryReason(t.recovery.components))}</span>
       </div>
     </div>
 
@@ -916,8 +1080,7 @@ async function renderToday(el, stale, quiet){
         t.sleep.performance_pct!=null?`${fmt(t.sleep.performance_pct)}% of ${t.sleep.need_hours}h goal`:"none detected",
         m => m>=60 ? `${Math.floor(m/60)}h ${Math.round(m%60)}m` : `${Math.round(m)}m`)}
       ${statTile("Strain", fmt(t.strain.score,1), "/ 21", t.strain.score,
-        prev&&prev.strain.score, true,
-        t.strain.score>=15?"hard day":t.strain.score>=9?"moderate":"light")}
+        prev&&prev.strain.score, true, strainNote(t.strain.score, days))}
     </div>
 
     <div class="card"><h2>HRV — last ${data.days.length} days</h2>
@@ -975,6 +1138,7 @@ async function renderToday(el, stale, quiet){
     n.innerHTML = `<div style="display:flex;align-items:baseline;gap:9px">
       <span style="font-size:30px;font-weight:700;letter-spacing:-.03em;color:${col}">
         ${st.current.toFixed(1)}</span>
+      <span class="muted" style="font-size:13px">of ${st.scale_max.toFixed(1)}</span>
       <span style="font-weight:650;letter-spacing:1.2px;text-transform:uppercase;
         font-size:11px;color:${col}">${esc(st.band)}</span></div>
     <div class="zonebar">${[["low",css("--good")],["medium",css("--warn")],["high",css("--crit")]]
@@ -987,7 +1151,7 @@ function dayRow(d){
   const band = BANDS[d.recovery.band];
   const colour = band ? band.c : "var(--muted)";
   const mins = d.sleep.total_minutes || 0;
-  const when = new Date(d.date + "T00:00:00Z")
+  const when = dateOf(d.date)
     .toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"});
   return `<div class="dayrow">
     <span class="dot" style="background:${colour}"></span>
@@ -1031,6 +1195,28 @@ function wireRingBar(){
   window.removeEventListener("scroll", window.__ringScroll);
   window.__ringScroll = onScroll;
   window.addEventListener("scroll", onScroll, {passive:true});
+}
+
+// "7.9 / 21" and the word "light" say nothing about whether that is a normal
+// day for you. Twenty-one is the top of the scale, not a target, and most
+// people never go near it -- so the useful comparison is your own usual day.
+function typical(days, pick){
+  const values = (days || []).map(pick).filter(v => typeof v === "number");
+  if(values.length < 5) return null;
+  values.sort((a, b) => a - b);
+  return values[Math.floor(values.length / 2)];
+}
+
+function strainNote(score, days){
+  const usual = typical(days, d => d.strain && d.strain.score);
+  if(score == null) return "";
+  if(usual == null)
+    return score >= 15 ? "hard day" : score >= 9 ? "moderate" : "light";
+  const label = score >= 15 ? "hard day" : score >= 9 ? "moderate" : "light";
+  const gap = score - usual;
+  if(Math.abs(gap) < Math.max(1.5, usual * 0.15))
+    return `${label} · about your usual ${fmt(usual,1)}`;
+  return `${label} · ${gap > 0 ? "above" : "below"} your usual ${fmt(usual,1)}`;
 }
 
 function statTile(label, value, unit, now, before, higherBetter, note, deltaFmt){
@@ -1149,8 +1335,8 @@ async function renderJournal(el, stale, quiet){
 
   $("#iadd").onclick = async () => {
     const [hh,mm] = $("#itime").value.split(":").map(Number);
-    const when = new Date(state.date + "T00:00:00Z");
-    when.setUTCHours(hh, mm, 0, 0);
+    const when = dateOf(state.date);
+    when.setHours(hh, mm, 0, 0);
     try{
       await api("/api/intake", {method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({at: when.toISOString(), substance: $("#isub").value,
@@ -1226,10 +1412,11 @@ async function renderActivities(el, stale, quiet){
       await api(`/api/activities/${id}`,{method:"DELETE"}); render(); };
   });
   $("#madd").onclick = async () => {
-    const base=Math.floor(new Date(state.date+"T00:00:00Z").getTime()/1000);
     const [sh,sm]=$("#mstart").value.split(":").map(Number);
     const [eh,em]=$("#mend").value.split(":").map(Number);
-    let start=base+sh*3600+sm*60, end=base+eh*3600+em*60;
+    const from=dateOf(state.date), to=dateOf(state.date);
+    from.setHours(sh, sm, 0, 0); to.setHours(eh, em, 0, 0);
+    let start=Math.floor(from.getTime()/1000), end=Math.floor(to.getTime()/1000);
     if(end<=start) end+=86400;
     try{
       await api("/api/activities",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -1324,7 +1511,8 @@ async function renderHealthDetail(el, stale, quiet){
   const d = await api(`/api/health-monitor?date=${state.date}`);
   if(stale()) return;
   const hr = d.heart_rate;
-  const ICONS = {"Resting HR":"rhr","HRV":"hrv","Respiratory rate":"lungs",
+  const ICONS = {
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-1 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.6 1.6 0 0 0 4.6 15a1.6 1.6 0 0 0-1.47-1H3a2 2 0 1 1 0-4h.11A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.6 1.6 0 0 0 9 4.6a1.6 1.6 0 0 0 1-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 1 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.6 1.6 0 0 0 19.4 9v0a1.6 1.6 0 0 0 1.47 1H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47 1z"/>',"Resting HR":"rhr","HRV":"hrv","Respiratory rate":"lungs",
                  "Blood oxygen":"droplet","Skin temperature":"thermometer"};
   el.innerHTML = detailHeader("Health monitor") + `<div class="stagger">
     <div class="card">
@@ -1437,6 +1625,42 @@ function statLine(label, value, sub){
     <div class="bl-v">${value}</div>${sub?`<div class="bl-s">${sub}</div>`:""}</div>`;
 }
 
+// Every card on this tab was named after the method rather than the question
+// it answers -- "Autonomic balance", "Circadian phase", "Recovery velocity".
+// The proper name is kept underneath, because it is what you would search for
+// and hiding it would be a different kind of dishonesty, but the heading is
+// now the thing you actually wanted to know.
+// A number on a scale nobody knows is not information. Each of these says, in
+// a sentence, what this particular value means -- which is the thing the
+// scale bar underneath was being asked to convey on its own and could not.
+function readAlpha1(alpha){
+  if(alpha >= 0.9)
+    return "<b>Relaxed.</b> Your heart rhythm has its usual structure — what a rested night looks like.";
+  if(alpha >= 0.75)
+    return "<b>Settled.</b> Normal resting structure, toward the working end.";
+  if(alpha >= 0.5)
+    return "<b>Working.</b> The pattern you would see part-way through effort, or on a tired day.";
+  return "<b>Under load.</b> The rhythm looks like hard exercise. At rest, that usually means fatigue or illness.";
+}
+
+function readEntropy(value){
+  if(value >= 1.5) return "Varied and unpredictable, which is the healthy direction.";
+  if(value >= 1.0) return "Moderately varied.";
+  return "Unusually regular. A very steady rhythm at rest is not a good sign.";
+}
+
+function readRatio(ratio){
+  if(ratio < 0.8) return "<b>Doing less than usual.</b> Fine for a rest week; a long stretch here loses fitness.";
+  if(ratio <= 1.3) return "<b>In step.</b> This week is about what your last month prepared you for.";
+  if(ratio <= 1.5) return "<b>Ramping up.</b> Noticeably more than you are used to — worth easing off if it holds.";
+  return "<b>A big jump.</b> Well beyond your recent normal, which is when people get hurt.";
+}
+
+function askedHeading(question, method){
+  return `<h2 class="asks">${esc(question)}</h2>
+    <div class="method">${esc(method)}</div>`;
+}
+
 function notReady(reason){
   return `<div class="muted" style="padding:6px 0">${esc(reason || "Not enough data yet.")}</div>`;
 }
@@ -1460,26 +1684,29 @@ async function renderBody(el, stale, quiet){
     <div class="card tappable" data-open="age"><h2 style="display:flex;
       align-items:center;justify-content:space-between">Fitness age
       <span class="go">${icon("chevron_right",15)}</span></h2>
-      <div class="muted">Estimated VO₂ max, the age its population median matches,
-      and whether your own is moving.</div>
+      <div class="muted">How fit your heart is, expressed as the age most people
+      with that fitness are — and whether yours is heading the right way.</div>
     </div>
 
-    <div class="card"><h2>Autonomic balance</h2>
+    <div class="card">${askedHeading('Is your heart rhythm relaxed or working?', 'DFA α1 and sample entropy')}
       ${dfa.usable ? `
         <div class="bigstat" style="color:${band[dfa.band]||css('--muted')}">
           ${dfa.alpha1}<span>DFA α1</span></div>
-        <div class="muted" style="margin-top:4px">${esc(dfa.band)} · from
+        <div class="reading">${readAlpha1(dfa.alpha1)}</div>
+        <div class="muted" style="margin-top:6px;font-size:12px">${esc(dfa.band)} · from
           ${dfa.beats} clean beats over ${esc(d.hrv_nonlinear.source.replace("_"," "))}
           · ${(dfa.artifact_rate*100).toFixed(1)}% artifacts</div>
         <div class="scale"><i style="left:0;width:33%;background:${css('--crit')}"></i>
           <i style="left:33%;width:25%;background:${css('--warn')}"></i>
           <i style="left:58%;width:42%;background:${css('--good')}"></i>
           <span class="mark" style="left:${Math.max(0,Math.min(100,dfa.alpha1/1.5*100))}%"></span></div>
-        <div class="scalekey"><span>0 · threshold</span><span>0.75</span><span>1.5 · correlated</span></div>
+        <div class="scalekey"><span>0 · like hard exercise</span><span>0.75</span>
+          <span>1.5 · fully rested</span></div>
       ` : notReady(dfa.reason)}
       ${se.usable ? `<div class="bl" style="margin-top:14px">
-        <div class="bl-k">Sample entropy</div><div class="bl-v">${se.sample_entropy}</div>
-        <div class="bl-s">higher = less predictable rhythm</div></div>` : ""}
+        <div class="bl-k">How varied the rhythm is</div>
+        <div class="bl-v">${se.sample_entropy}<span>sample entropy</span></div>
+        <div class="bl-s">${readEntropy(se.sample_entropy)}</div></div>` : ""}
       <details class="more"><summary>what this measures</summary>
         <p>RMSSD says how much beat-to-beat variability there is. DFA α1 describes its
         structure — whether the variation is correlated or random. Above 0.75 is the
@@ -1490,7 +1717,7 @@ async function renderBody(el, stale, quiet){
         noisier.</p></details>
     </div>
 
-    <div class="card"><h2>Circadian phase</h2>
+    <div class="card">${askedHeading('Does your sleep line up with your body clock?', 'Circadian phase')}
       ${cir.usable ? `
         <div class="bl"><div class="bl-k">Lowest heart rate</div>
           <div class="bl-v" style="color:${cir.aligned?css('--good'):css('--warn')}">
@@ -1506,7 +1733,7 @@ async function renderBody(el, stale, quiet){
       ` : notReady(cir.reason)}
     </div>
 
-    <div class="card"><h2>Recovery velocity</h2>
+    <div class="card">${askedHeading('How quickly does your heart settle after effort?', 'Heart-rate recovery')}
       ${hrr.usable ? `
         <div class="bigstat" style="color:${
           hrr.hrr_60s_band==="strong"?css("--good"):hrr.hrr_60s_band==="typical"?css("--warn"):css("--crit")}">
@@ -1522,15 +1749,16 @@ async function renderBody(el, stale, quiet){
       ` : notReady(hrr.reason)}
     </div>
 
-    <div class="card"><h2>Training load</h2>
+    <div class="card">${askedHeading('Are you training more than you are used to?', 'Acute:chronic workload ratio')}
       ${ac.usable ? `
         <div class="bigstat" style="color:${
           ac.band==="optimal"?css("--good"):ac.band==="spike"?css("--crit"):css("--warn")}">
-          ${ac.ratio}<span>acute : chronic</span></div>
-        <div class="grid3">
-          ${statLine("Acute", ac.acute, `${ac.acute_days}-day`)}
-          ${statLine("Chronic", ac.chronic, `${ac.chronic_days}-day`)}
-          ${statLine("Band", `<span style="text-transform:capitalize">${esc(ac.band)}</span>`, "")}
+          ${ac.ratio}<span>× your normal</span></div>
+        <div class="reading">${readRatio(ac.ratio)}</div>
+        <div class="grid3" style="margin-top:12px">
+          ${statLine("This week", ac.acute, `${ac.acute_days}-day average`)}
+          ${statLine("Normally", ac.chronic, `${ac.chronic_days}-day average`)}
+          ${statLine("Sweet spot", "0.8–1.3", "×")}
         </div>
         <div class="muted" style="margin-top:10px">${esc(ac.note)}</div>
         <details class="more"><summary>why no injury-risk number</summary>
@@ -1538,23 +1766,28 @@ async function renderBody(el, stale, quiet){
       ` : notReady(ac.reason)}
     </div>
 
-    <div class="card"><h2>Today's strain target</h2>
+    <div class="card">${askedHeading('How hard should today be?', 'Strain target')}
       ${tgt.usable ? `
         <div class="bigstat" style="color:${css('--strain')}">${tgt.target}
-          <span>of 21 · aim ${tgt.range[0]}–${tgt.range[1]}</span></div>
-        <div class="muted" style="margin-top:8px">${esc(tgt.note)}</div>
+          <span>aim for ${tgt.range[0]}–${tgt.range[1]} today</span></div>
+        <div class="reading">Anything in that range should leave you recovered
+          tomorrow. Well above it usually costs you the next day.</div>
+        <div class="muted" style="margin-top:8px;font-size:12px">${esc(tgt.note)}</div>
       ` : notReady(tgt.reason)}
     </div>
 
-    <div class="card"><h2>Sleep debt payback</h2>
+    <div class="card">${askedHeading('How do you catch up on the sleep you owe?', 'Sleep debt payback')}
       ${deb.options && deb.options.length ? `
         <div class="bigstat" style="color:${css('--sleep')}">
-          ${(deb.debt_minutes/60).toFixed(1)}<span>hours owed</span></div>
+          ${(deb.debt_minutes/60).toFixed(1)}<span>hours short</span></div>
+        <div class="reading">Built up over the last week against your nightly
+          target. Here is what clearing it would take.</div>
         ${deb.options.map(o=>`<div class="bl">
-          <div class="bl-k">Over ${o.nights} nights</div>
-          <div class="bl-v">+${o.extra_minutes_per_night}<span>min/night</span></div>
-          <div class="bl-s">a ${Math.floor(o.target_minutes_per_night/60)}h
-            ${o.target_minutes_per_night%60}m target</div></div>`).join("")}
+          <div class="bl-k">If you take ${o.nights} nights</div>
+          <div class="bl-v">${Math.floor(o.target_minutes_per_night/60)}h
+            ${o.target_minutes_per_night%60}m<span>a night</span></div>
+          <div class="bl-s">${o.extra_minutes_per_night} minutes more than your
+            target, every night for ${o.nights}</div></div>`).join("")}
         <details class="more"><summary>how this is modelled</summary>
           <p>Sleep debt does not clear one-for-one, so extra sleep pays it down at
           ${Math.round((deb.model?.payback_efficiency ?? 0.55)*100)}% of face value and
@@ -1564,13 +1797,18 @@ async function renderBody(el, stale, quiet){
       ` : `<div class="muted">${esc(deb.note || "No meaningful debt right now.")}</div>`}
     </div>
 
-    <div class="card"><h2>Effort efficiency</h2>
+    <div class="card">${askedHeading('Are the same workouts getting easier?', 'Heart rate for the same output')}
       ${eff.usable ? eff.activities.map(a=>`<div class="bl">
           <div class="bl-k" style="text-transform:capitalize">${esc(a.activity)}</div>
           <div class="bl-v" style="color:${
             a.direction==="improving"?css("--good"):a.direction==="declining"?css("--crit"):css("--muted")}">
-            ${a.hr_change_per_week>0?"+":""}${a.hr_change_per_week}<span>bpm/week</span></div>
-          <div class="bl-s">${esc(a.note)} ${a.bouts} bouts over ${a.span_days} days.</div>
+            ${a.hr_change_per_week>0?"+":""}${a.hr_change_per_week}<span>bpm a week</span></div>
+          <div class="bl-s">${a.hr_change_per_week < 0
+              ? "Your heart rate is falling for the same effort, which is fitness improving."
+              : a.hr_change_per_week > 0
+                ? "Your heart rate is climbing for the same effort — worth watching."
+                : "Holding steady."} ${esc(a.note)} From ${a.bouts} sessions over
+            ${a.span_days} days.</div>
         </div>`).join("")
       : `<div class="muted">Nothing comparable yet.</div>`}
       ${Object.keys(eff.skipped||{}).length?`<div class="muted" style="margin-top:10px">
@@ -1708,12 +1946,172 @@ async function renderLearning(el, stale, quiet){
   };
 }
 
+// ---------- Settings ----------
+// Everything account-shaped lives here: who you are, which laptops may post
+// for you, and who else has an account. It is a detail route so the back
+// arrow and the browser's back button behave the way they do everywhere else.
+const ZONES = ["America/Chicago","America/New_York","America/Denver",
+  "America/Los_Angeles","America/Phoenix","America/Anchorage","Pacific/Honolulu",
+  "Europe/London","Europe/Dublin","Europe/Paris","Europe/Berlin","Europe/Madrid",
+  "Australia/Sydney","Asia/Tokyo","Asia/Singapore","UTC"];
+
+function fieldRow(label, inner, hint){
+  return `<div class="setrow"><label>${esc(label)}</label>${inner}
+    ${hint?`<div class="sethint">${hint}</div>`:""}</div>`;
+}
+
+async function renderSettings(el, stale, quiet){
+  const [me, devices] = await Promise.all([api("/api/me"), api("/api/devices")]);
+  if(stale()) return;
+  const u = me.user;
+  const guessed = (()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }
+                         catch(_){ return ""; } })();
+  const zones = Array.from(new Set([u.timezone, guessed, ...ZONES].filter(Boolean)));
+
+  let invites = null;
+  if(me.is_owner){ try{ invites = await api("/api/invites"); }catch(_){ } }
+  if(stale()) return;
+
+  el.innerHTML = detailHeader("Settings") + `<div class="stagger">
+    <div class="card">
+      <h2>${esc(u.display_name || u.email)}</h2>
+      <div class="muted" style="margin-bottom:14px">${esc(u.email)}${
+        me.is_owner?" · owner of this server":""}</div>
+      <button class="btn ghost" id="signout">Sign out</button>
+    </div>
+
+    <div class="card"><h2>Your day</h2>
+      ${fieldRow("Time zone",
+        `<select id="tz">${zones.map(z=>`<option value="${esc(z)}"${
+          z===u.timezone?" selected":""}>${esc(z.replace(/_/g," "))}</option>`).join("")}</select>`,
+        "Days break at midnight here, so an evening belongs to that evening.")}
+      ${fieldRow("Maximum heart rate",
+        `<input id="maxhr" type="number" inputmode="numeric" min="120" max="230"
+           value="${u.max_hr ?? ""}" placeholder="${220 - (u.age || 30)}">`,
+        "Strain is measured against this. The placeholder is the 220−age rule, which is only a rough guide.")}
+      ${fieldRow("Age", `<input id="age" type="number" inputmode="numeric" min="10" max="100"
+           value="${u.age ?? ""}" placeholder="optional">`,
+        "Only used to compare your estimated VO₂ max against the population median.")}
+      ${fieldRow("Sleep target (hours)",
+        `<input id="sleepneed" type="number" inputmode="decimal" step="0.5" min="4" max="12"
+           value="${u.sleep_need_h ?? ""}" placeholder="8">`)}
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="saveprofile">Save</button>
+        <span class="muted" id="profmsg" style="text-align:right;flex:1"></span></div>
+    </div>
+
+    <div class="card"><h2>Your laptops</h2>
+      <div class="muted" style="margin-bottom:12px">A laptop with Bluetooth stays
+        near your strap and forwards what it collects. Pairing gives that laptop
+        its own key — revoking one does not affect the others.</div>
+      ${devices.devices.length ? devices.devices.map(d=>`
+        <div class="bl" data-device="${d.id}">
+          <div class="bl-k">${esc(d.name || "Laptop")}${d.revoked?" · revoked":""}</div>
+          <div class="bl-s">${d.last_seen ? "last heard " + esc(d.last_seen)
+                                          : "never connected"}</div>
+          ${d.revoked?"":`<button class="btn ghost small revoke">Revoke</button>`}
+        </div>`).join("")
+        : `<div class="muted">No laptop paired yet.</div>`}
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="pair">Connect a laptop</button></div>
+      <div id="pairout"></div>
+    </div>
+
+    ${me.is_owner ? `<div class="card"><h2>Family</h2>
+      <div class="muted" style="margin-bottom:12px">Everyone gets their own account
+        and their own data. Nobody can see anyone else's.</div>
+      ${(invites?.members || []).map(m=>`<div class="bl">
+        <div class="bl-k">${esc(m.display_name || m.email)}</div>
+        <div class="bl-s">${esc(m.email)} · ${esc(m.role)}${m.disabled?" · disabled":""}</div>
+      </div>`).join("")}
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="invite">Create an invite link</button></div>
+      <div id="inviteout"></div>
+    </div>` : ""}
+
+    <div class="card"><h2>Password</h2>
+      ${fieldRow("Current", `<input id="pwold" type="password" autocomplete="current-password">`)}
+      ${fieldRow("New", `<input id="pwnew" type="password" autocomplete="new-password">`)}
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost" id="savepw">Change password</button>
+        <span class="muted" id="pwmsg" style="text-align:right;flex:1"></span></div>
+      <div class="sethint">Changing it signs you out everywhere, including this device.</div>
+    </div>
+  </div>`;
+
+  $("#signout").onclick = async () => {
+    await api("/api/logout", {method:"POST"});
+    location.href = "/signin";
+  };
+
+  $("#saveprofile").onclick = async () => {
+    const num = id => { const v = $(id).value.trim(); return v === "" ? null : Number(v); };
+    try{
+      await api("/api/me", {method:"PATCH", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({timezone: $("#tz").value, max_hr: num("#maxhr"),
+          age: num("#age"), sleep_need_h: num("#sleepneed")})});
+      apiCache.clear();
+      say("#profmsg", "saved ✓"); setTimeout(()=>say("#profmsg",""), 2500);
+    }catch(err){ say("#profmsg", err.message); }
+  };
+
+  $("#pair").onclick = async () => {
+    try{
+      const got = await api("/api/pair/start", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body:"{}"});
+      $("#pairout").innerHTML = `<div class="paircode">
+        <div class="code">${esc(got.code)}</div>
+        <div class="muted">Open the Strap setup app on your Windows laptop and type
+          this in. It works once and expires in about fifteen minutes.</div>
+        <a class="btn ghost small" href="/setup" target="_blank" rel="noopener">
+          Get the laptop app</a></div>`;
+    }catch(err){ $("#pairout").innerHTML = `<div class="muted">${esc(err.message)}</div>`; }
+  };
+
+  el.querySelectorAll("[data-device] .revoke").forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.closest("[data-device]").dataset.device;
+      await api(`/api/devices/${id}`, {method:"DELETE"});
+      render();
+    };
+  });
+
+  const inviteBtn = $("#invite");
+  if(inviteBtn) inviteBtn.onclick = async () => {
+    try{
+      const r = await fetch("/api/invites", {method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"}, body:"label="});
+      const got = await r.json();
+      if(!r.ok) throw new Error(got.detail || "failed");
+      $("#inviteout").innerHTML = `<div class="paircode">
+        <input readonly id="invurl" value="${esc(got.url)}">
+        <div class="muted">${esc(got.note)}</div>
+        <button class="btn ghost small" id="copyinv">Copy link</button></div>`;
+      $("#copyinv").onclick = async () => {
+        try{ await navigator.clipboard.writeText(got.url); say("#copyinv","Copied"); }
+        catch(_){ $("#invurl").select(); }
+      };
+    }catch(err){ $("#inviteout").innerHTML = `<div class="muted">${esc(err.message)}</div>`; }
+  };
+
+  $("#savepw").onclick = async () => {
+    try{
+      const out = await api("/api/password", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({current: $("#pwold").value, replacement: $("#pwnew").value})});
+      say("#pwmsg", "changed — signing out");
+      setTimeout(()=>{ location.href = "/signin"; }, 1200);
+    }catch(err){ say("#pwmsg", err.message); }
+  };
+}
+
 // ---------- shell ----------
 const TABS={today:renderToday, journal:renderJournal, activities:renderActivities,
             body:renderBody, insights:renderInsights, learning:renderLearning};
 // Detail views live on their own hash routes so they are linkable and the
 // browser back button behaves the way people expect.
-const DETAILS={health:renderHealthDetail, stress:renderStressDetail, age:renderAgeDetail};
+const DETAILS={health:renderHealthDetail, stress:renderStressDetail, age:renderAgeDetail,
+               settings:renderSettings};
 
 function openDetail(name){ location.hash = "#/" + name; }
 function closeDetail(){
@@ -1798,6 +2196,7 @@ $("#nav").onclick = e => {
 // The hash is the only thing that says which detail view is open, so every
 // way of changing it -- a tapped card, the back arrow, the browser's own back
 // and forward buttons, a pasted link -- has to come through here.
+$("#settings").onclick = () => openDetail("settings");
 addEventListener("hashchange", () => render());
 render();
 // Live data: refresh quietly and often enough to feel live, without the page
@@ -1805,8 +2204,10 @@ render();
 setInterval(() => {
   if(document.hidden) return;               // no work while the tab is hidden
   const d = currentDetail();
-  if(d === "health" || d === "stress" || (!d && (state.tab === "today" || state.tab === "body")))
+  if(d === "health" || d === "stress" || (!d && (state.tab === "today" || state.tab === "body"))){
+    apiCache.clear();                       // this tick is the one that must hit the network
     render({quiet:true});
+  }
 }, 20000);
 document.addEventListener("visibilitychange", () => {
   if(!document.hidden) render({quiet:true});

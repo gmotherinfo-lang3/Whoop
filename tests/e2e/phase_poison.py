@@ -13,7 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import INGEST_TOKEN, WORK, check, jget, report, start_server, wait_http
+from harness import (Client, WORK, check, jget, report, start_server,
+                     wait_http)
 
 import strap                                            # noqa: E402
 from whoop_bridge.decode import decode                  # noqa: E402
@@ -28,6 +29,9 @@ srv = start_server(PORT, f"{STATE}/whoop.db", log=f"{STATE}/server.log")
 
 try:
     assert wait_http(f"{LAN}/healthz")
+    owner = Client(LAN)
+    owner.sign_up_owner()
+    token = owner.pair_a_laptop()
     spool = Spool(f"{STATE}/spool.db")
     now = int(time.time())
 
@@ -55,7 +59,7 @@ try:
           depth0 == good_before + good_after + 1, f"depth={depth0}")
 
     async def drain():
-        fw = Forwarder(spool, url=f"{LAN}/ingest", token=INGEST_TOKEN,
+        fw = Forwarder(spool, url=f"{LAN}/ingest", token=token,
                        batch_size=50, interval=0.5)
         task = asyncio.create_task(fw.run())
         for _ in range(60):                  # 30 seconds is generous
@@ -73,7 +77,7 @@ try:
           f"depth={spool.depth()} after {took:.0f}s")
 
     import sqlite3
-    con = sqlite3.connect(f"file:{STATE}/whoop.db?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{STATE}/data-1.db?mode=ro", uri=True)
     stored = {r[0] for r in con.execute("SELECT record_id FROM records")}
     bad = con.execute("SELECT heart_rate, gravity_x FROM records WHERE record_id = ?",
                       (poison["record_id"],)).fetchone()
@@ -87,10 +91,10 @@ try:
           bad is not None and bad[0] is None and bad[1] is None, str(bad))
 
     time.sleep(4)                       # past the ingest coalescing window
-    _, day = jget(f"{LAN}/api/summary?days=2")
+    _, day = owner.call("/api/summary?days=2")
     check("the day still computes with the poisoned record in it",
           any(d.get("has_data") for d in day.get("days", [])), str(day)[:160])
-    _, hm = jget(f"{LAN}/api/health-monitor")
+    _, hm = owner.call("/api/health-monitor")
     check("the health monitor reads the day without tripping over it",
           hm.get("heart_rate", {}).get("latest") is not None, str(hm)[:160])
 finally:

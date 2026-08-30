@@ -1,0 +1,107 @@
+name: Windows app
+
+# PyInstaller does not cross-compile, so the one-file Strap.exe is built here
+# on a Windows runner rather than on the server. The artifact is what people
+# download; put it beside the server's /setup page, or attach it to a release.
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    paths:
+      - "whoop_bridge/**"
+      - "tray/**"
+      - "windows/**"
+      - "pyproject.toml"
+      - ".github/workflows/windows-app.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[tray]"
+          pip install pyinstaller==6.11.1
+
+      - name: Check it imports before packaging it
+        # A missing dependency is far easier to read here than as a silent
+        # failure inside a frozen build.
+        run: |
+          python -c "import bleak, pystray, PIL, httpx, click, tkinter"
+          python -c "from tray.setup_window import SetupWindow"
+          python -c "from whoop_bridge.setup_config import needs_setup, normalise_code"
+
+      - name: What Bluetooth support is actually installed
+        # Printed every run, not just on failure. bleak reaches Windows
+        # Bluetooth through the winrt namespace packages, and when they are
+        # missing the app builds cleanly and then never sees a strap -- so
+        # what was found needs to be on the record, not inferred afterwards.
+        run: |
+          python -c @"
+          import importlib.metadata as md
+          dists = sorted(d.metadata['Name'] for d in md.distributions()
+                         if (d.metadata['Name'] or '').lower().startswith('winrt'))
+          print(f'winrt distributions installed: {len(dists)}')
+          for name in dists:
+              print('   ', name)
+          print('bleak', md.version('bleak'))
+          import winrt.windows.devices.bluetooth
+          print('importing winrt.windows.devices.bluetooth: ok')
+          import bleak.backends.winrt.client
+          print('importing bleak winrt backend: ok')
+          from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs
+          mods = collect_submodules('winrt')
+          libs = collect_dynamic_libs('winrt')
+          print(f'PyInstaller sees {len(mods)} winrt modules and {len(libs)} binaries')
+          for m in mods[:12]:
+              print('   ', m)
+          if not mods:
+              raise SystemExit('PyInstaller cannot see any winrt module to bundle')
+          "@
+
+      - name: Build
+        run: pyinstaller --clean --noconfirm windows/strap.spec
+
+      - name: Smoke test the exe
+        # --check imports everything the app needs from inside the frozen
+        # bundle. PyInstaller drops imports it cannot see, and the two most
+        # likely losses -- bleak's WinRT backend and tkinter -- surface much
+        # later as "no strap found" and a setup window that never opens.
+        run: |
+          if (-not (Test-Path dist/Strap.exe)) { throw "Strap.exe was not produced" }
+          $size = (Get-Item dist/Strap.exe).Length / 1MB
+          Write-Host "Strap.exe is $([math]::Round($size,1)) MB"
+          if ($size -gt 200) { throw "unexpectedly large: check the excludes in strap.spec" }
+          # Start-Process, not `&`. Strap.exe is built console=False so that no
+          # black window appears at logon, and a windowed Windows executable
+          # detaches from the console immediately -- `&` returns straight away
+          # and $LASTEXITCODE then describes something else entirely. This was
+          # reported as a missing module while the check was in fact printing
+          # "ok: 9 required modules present".
+          $out = Join-Path $env:RUNNER_TEMP "check-out.txt"
+          $err = Join-Path $env:RUNNER_TEMP "check-err.txt"
+          $proc = Start-Process -FilePath (Resolve-Path dist/Strap.exe) `
+                    -ArgumentList "--check" -Wait -PassThru -NoNewWindow `
+                    -RedirectStandardOutput $out -RedirectStandardError $err
+          Get-Content $out -ErrorAction SilentlyContinue
+          Get-Content $err -ErrorAction SilentlyContinue
+          if ($proc.ExitCode -ne 0) {
+            throw "The built exe is missing something it needs -- see the list above. " +
+                  "Do not silence this by adding the module to ``excludes`` in " +
+                  "windows/strap.spec: that is what makes it missing."
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Strap-windows
+          path: dist/Strap.exe
+          if-no-files-found: error

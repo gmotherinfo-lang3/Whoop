@@ -7,28 +7,41 @@ removes it: one file, double-click, done.
 
 Built on Windows -- PyInstaller does not cross-compile, so this runs in CI on
 a Windows runner (see .github/workflows/windows-app.yml), not on the server.
+
+  About winrt
+
+bleak talks to Windows Bluetooth through the `winrt-*` packages, which are
+namespace packages split across a dozen distributions. PyInstaller's static
+analysis cannot see into them, and a hand-written list of module names is a
+guess that goes stale whenever bleak changes what it needs. So the list is
+discovered here, on the machine doing the build, from what is actually
+installed. If nothing is found the build fails rather than producing an exe
+that starts cleanly and then never finds a strap.
 """
 
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
+
 ROOT = Path(SPECPATH).parent
 
-# bleak reaches for the Windows Runtime at import time and PyInstaller cannot
-# see those imports, so they are named here. Missing one shows up as a working
-# app that cannot find any strap, which is a miserable thing to debug.
+# Discovered rather than declared: whatever winrt packages bleak pulled in.
+winrt_modules = collect_submodules("winrt")
+winrt_binaries = collect_dynamic_libs("winrt")
+
+if sys.platform == "win32" and not winrt_modules:
+    raise SystemExit(
+        "No winrt modules found. bleak cannot reach Windows Bluetooth without "
+        "them, so this build would produce an app that never finds a strap.\n"
+        "Install the Windows dependencies first:  pip install -e \".[tray]\"")
+
 HIDDEN = [
+    *winrt_modules,
     "bleak.backends.winrt",
     "bleak.backends.winrt.client",
     "bleak.backends.winrt.scanner",
     "bleak.backends.winrt.util",
-    "winrt.windows.devices.bluetooth",
-    "winrt.windows.devices.bluetooth.advertisement",
-    "winrt.windows.devices.bluetooth.genericattributeprofile",
-    "winrt.windows.devices.enumeration",
-    "winrt.windows.foundation",
-    "winrt.windows.foundation.collections",
-    "winrt.windows.storage.streams",
     "pystray._win32",
     "PIL._tkinter_finder",
     "tkinter",
@@ -38,13 +51,14 @@ HIDDEN = [
 analysis = Analysis(
     [str(ROOT / "windows" / "launcher.py")],
     pathex=[str(ROOT)],
-    binaries=[],
+    binaries=winrt_binaries,
     datas=[(str(ROOT / "config.example.toml"), ".")],
     hiddenimports=HIDDEN,
     hookspath=[],
     runtime_hooks=[],
     # Trimming what a tray app cannot need keeps the download reasonable.
-    # Note: winrt is NOT excluded here -- it must be bundled for Bluetooth support
+    # winrt is deliberately NOT here: excluding it is how this build ends up
+    # unable to see any Bluetooth adapter.
     excludes=["matplotlib", "numpy", "scipy", "pandas", "pytest", "IPython"],
     noarchive=False,
 )

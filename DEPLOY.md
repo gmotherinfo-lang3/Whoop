@@ -23,14 +23,26 @@ cp .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(32))"   # -> INGEST_TOKEN
 ```
 
+The first person to open the server's URL creates the owner account. Everyone
+after that needs an invite link from Settings → Family.
+
 Fill in `.env`:
 
-- `INGEST_TOKEN` — the secret the bridge posts with.
+- `INGEST_TOKEN` — **no longer needed for a new install.** Laptops get their
+  own key by pairing (Settings → Connect a laptop). Set it only if you are
+  upgrading and have a bridge still configured with the old shared token; it
+  keeps working until you re-pair, and posts as the owner.
 - `TUNNEL_TOKEN` — from Cloudflare Zero Trust → Networks → Tunnels → your
   tunnel → Install connector (copy the token out of the shown command).
 - `MAX_HR` — **set this**. Strain is computed against it; the 190 default is
   the `220 − age` rule at age 30 and will skew your numbers if that is not you.
-- `TZ_OFFSET_HOURS` — so "days" break at your local midnight, not UTC.
+- `TZ_NAME` — **set this**. Your timezone as an IANA name, e.g.
+  `America/Chicago` for Birmingham AL, `Europe/London`. Days break at your
+  local midnight, so an evening belongs to that evening instead of landing on
+  tomorrow because UTC has already rolled over. Use a name rather than a fixed
+  offset: an offset is wrong for half the year anywhere the clocks change, and
+  it moves the day boundary underneath data already stored against the old one.
+  (`TZ_OFFSET_HOURS` still works if you were already using it.)
 - `USER_AGE` and `USER_SEX` — optional, and used only by the Fitness age view,
   to say how your estimated VO₂ max compares to the population median for your
   age. Leave them unset and that view still shows VO₂ max and the age it

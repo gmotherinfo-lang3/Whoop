@@ -172,6 +172,50 @@ class Database:
                             ("deleted", "INTEGER NOT NULL DEFAULT 0")):
             if column not in have:
                 self._conn.execute(f"ALTER TABLE activities ADD COLUMN {column} {ddl}")
+        self._merge_duplicate_activities()
+
+    def _merge_duplicate_activities(self) -> int:
+        """Collapse the near-identical rows the old exact-bounds keying left.
+
+        Detection used to key on (start_unix, end_unix), so a night that was
+        still growing produced one row per re-detection. Existing databases are
+        full of them; new ones will not be. Only auto-detected, undeleted rows
+        are touched, and each surviving row is widened to cover the ones it
+        absorbs, so nothing a person labelled or removed is affected.
+        """
+        rows = self._conn.execute(
+            "SELECT id, start_unix, end_unix FROM activities "
+            "WHERE source='auto' AND deleted=0 ORDER BY start_unix, end_unix").fetchall()
+        keep: list[dict[str, int]] = []
+        drop: list[int] = []
+        for row in rows:
+            span = max(1, row["end_unix"] - row["start_unix"])
+            merged = False
+            for k in keep:
+                overlap = min(row["end_unix"], k["end"]) - max(row["start_unix"], k["start"])
+                shorter = max(1, min(span, k["end"] - k["start"]))
+                if overlap / shorter >= self.OVERLAP_FRACTION:
+                    k["start"] = min(k["start"], row["start_unix"])
+                    k["end"] = max(k["end"], row["end_unix"])
+                    drop.append(row["id"])
+                    merged = True
+                    break
+            if not merged:
+                keep.append({"id": row["id"], "start": row["start_unix"],
+                             "end": row["end_unix"]})
+        if not drop:
+            return 0
+        # Widen the survivors first, then remove what they absorbed, so the
+        # unique index never sees two rows claiming the same bounds.
+        self._conn.executemany(
+            "DELETE FROM activities WHERE id = ?", [(i,) for i in drop])
+        for k in keep:
+            self._conn.execute(
+                "UPDATE activities SET start_unix=?, end_unix=? WHERE id=?",
+                (k["start"], k["end"], k["id"]))
+        self._conn.commit()
+        log.info("merged %d duplicate detected activities into %d", len(drop), len(keep))
+        return len(drop)
 
     def insert_records(self, records: Iterable[dict[str, Any]]) -> tuple[int, int]:
         """Insert a batch. Returns (received, actually_inserted).
@@ -303,18 +347,40 @@ class Database:
     def upsert_activity(self, start_unix: int, end_unix: int, detected_type: str | None,
                         confidence: float | None, features: dict[str, float],
                         source: str = "auto", note: str | None = None) -> int:
-        """Insert a detected bout. An existing bout keeps its user label."""
+        """Insert or refresh a detected bout. An existing bout keeps its label.
+
+        Matching is by OVERLAP, not by exact bounds. Detection re-runs while
+        the strap is still streaming, and each run sees a slightly longer
+        night: 00:00-06:24, then 00:00-06:26, then 00:00-06:27. Keying on
+        (start, end) made every one of those a different row, so a single
+        night's sleep piled up as a dozen near-identical entries and the list
+        grew all day. The same night is one bout, and re-detection should
+        extend it rather than add another.
+        """
         with self._lock:
+            matches = self._overlapping_auto(start_unix, end_unix)
+            if matches:
+                # A later, longer reading can span fragments an earlier pass
+                # split the night into, so every row it covers is absorbed --
+                # otherwise the leftovers survive as duplicates.
+                keep = matches[0]
+                lo = min([start_unix] + [m["start_unix"] for m in matches])
+                hi = max([end_unix] + [m["end_unix"] for m in matches])
+                if len(matches) > 1:
+                    self._conn.executemany(
+                        "DELETE FROM activities WHERE id = ?",
+                        [(m["id"],) for m in matches[1:]])
+                self._conn.execute(
+                    "UPDATE activities SET start_unix=?, end_unix=?, "
+                    "detected_type=?, confidence=?, features=? WHERE id=?",
+                    (lo, hi, detected_type, confidence, json.dumps(features), keep["id"]))
+                self._conn.commit()
+                return keep["id"]
+
             cur = self._conn.execute(
-                "INSERT INTO activities (start_unix, end_unix, detected_type, "
+                "INSERT OR IGNORE INTO activities (start_unix, end_unix, detected_type, "
                 "confidence, features, source, note, created_at) "
-                "VALUES (?,?,?,?,?,?,?,datetime('now')) "
-                # A user edit or deletion wins over re-detection: only refresh
-                # rows that are still auto-owned and not deleted.
-                "ON CONFLICT(start_unix, end_unix) DO UPDATE SET "
-                "detected_type=excluded.detected_type, confidence=excluded.confidence, "
-                "features=excluded.features "
-                "WHERE activities.source='auto' AND activities.deleted=0",
+                "VALUES (?,?,?,?,?,?,?,datetime('now'))",
                 (start_unix, end_unix, detected_type, confidence,
                  json.dumps(features), source, note))
             self._conn.commit()
@@ -324,6 +390,33 @@ class Database:
                 "SELECT id FROM activities WHERE start_unix=? AND end_unix=?",
                 (start_unix, end_unix)).fetchone()
             return row["id"]
+
+    # A re-detected bout has to overlap an existing one by this much of the
+    # shorter of the two before they are treated as the same event. High
+    # enough that a workout starting right after a nap stays separate; low
+    # enough that a night still growing minute by minute keeps matching.
+    OVERLAP_FRACTION = 0.5
+
+    def _overlapping_auto(self, start_unix: int, end_unix: int) -> list[sqlite3.Row]:
+        """Auto-detected bouts this one is a re-reading of, best match first.
+
+        A user's own row is never matched: an edit or a deletion has to win
+        over re-detection, and silently absorbing a manual entry would undo it.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM activities WHERE source='auto' AND deleted=0 "
+            "AND start_unix < ? AND end_unix > ? ORDER BY start_unix",
+            (end_unix, start_unix)).fetchall()
+        span = max(1, end_unix - start_unix)
+        scored = []
+        for row in rows:
+            overlap = min(end_unix, row["end_unix"]) - max(start_unix, row["start_unix"])
+            shorter = max(1, min(span, row["end_unix"] - row["start_unix"]))
+            fraction = overlap / shorter
+            if fraction >= self.OVERLAP_FRACTION:
+                scored.append((fraction, row))
+        scored.sort(key=lambda pair: -pair[0])
+        return [row for _, row in scored]
 
     def label_activity(self, activity_id: int, confirmed_type: str) -> bool:
         return self.update_activity(activity_id, confirmed_type=confirmed_type)

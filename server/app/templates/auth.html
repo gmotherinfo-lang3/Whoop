@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>{{ heading }} · Strap</title>
+<script>
+// Applied before the first paint, from the same key the app uses, so there is
+// no flash of the wrong theme between signing in and the dashboard.
+try{ const t = localStorage.getItem("strap-theme");
+     if(t) document.documentElement.setAttribute("data-theme", t); }catch(_){}
+</script>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M5 19h4.2l2.1-6 3.4 10 3.3-13 2.6 9h6.4' fill='none' stroke='%2300FF87' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#000; --card:#161618; --raised:#232325; --line:rgba(255,255,255,.09);
+  --ink:#fff; --ink2:#a1a1a6; --muted:#8e8e93;
+  --good:#00FF87; --crit:#FF453A; --warn:#FFD426;
+  --r:16px; --r-sm:12px;
+}
+:root[data-theme="light"]{
+  --bg:#f5f5f7;--card:#fff;--raised:#f0f0f2;--line:rgba(0,0,0,.09);
+  --ink:#0b0b0c;--ink2:#3c3c43;--muted:#6e6e73;--good:#00A862;--crit:#D70015;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",Roboto,system-ui,sans-serif;
+  letter-spacing:-.01em;-webkit-font-smoothing:antialiased;
+  display:flex;align-items:center;justify-content:center;
+  padding:max(24px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom))}
+.card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r);padding:28px 24px 24px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.brand svg{display:block}
+.brand b{font-size:20px;letter-spacing:-.02em}
+h1{font-size:19px;margin:0 0 6px;letter-spacing:-.02em}
+p.lede{color:var(--muted);font-size:13.5px;margin:0 0 20px;line-height:1.5}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:1.3px;
+  color:var(--muted);margin:0 0 6px}
+.field{margin-bottom:14px}
+input{width:100%;background:var(--raised);border:1px solid var(--line);color:var(--ink);
+  border-radius:var(--r-sm);padding:13px 14px;font:inherit;letter-spacing:-.01em;
+  -webkit-appearance:none;transition:border-color .18s}
+input:focus{outline:none;border-color:color-mix(in srgb,var(--good) 55%,transparent)}
+button{width:100%;background:var(--good);color:#000;border:none;border-radius:999px;
+  padding:14px;font:inherit;font-weight:650;letter-spacing:-.01em;cursor:pointer;
+  transition:transform .18s ease-out,opacity .18s;margin-top:6px}
+button:active{transform:scale(.98)}
+button[disabled]{opacity:.5;cursor:default}
+.msg{margin-top:14px;font-size:13.5px;border-radius:var(--r-sm);padding:11px 13px;
+  line-height:1.45;display:none}
+.msg.bad{display:block;background:color-mix(in srgb,var(--crit) 15%,transparent);
+  color:var(--crit);border:1px solid color-mix(in srgb,var(--crit) 35%,transparent)}
+.msg.good{display:block;background:color-mix(in srgb,var(--good) 13%,transparent);
+  color:var(--good);border:1px solid color-mix(in srgb,var(--good) 32%,transparent)}
+.hint{color:var(--muted);font-size:12px;margin-top:16px;line-height:1.5}
+.hint b{color:var(--ink2);font-weight:600}
+</style>
+</head>
+<body>
+<form class="card" id="form" autocomplete="on">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="var(--raised)"/>
+      <path d="M5 19h4.2l2.1-6 3.4 10 3.3-13 2.6 9h6.4" fill="none"
+            stroke="var(--good)" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round"/>
+    </svg>
+    <b>Strap</b>
+  </div>
+
+  <h1>{{ heading }}</h1>
+  <p class="lede">{{ lede }}</p>
+
+  {% if mode != "login" %}
+  <div class="field">
+    <label for="name">Your name</label>
+    <input id="name" name="name" autocomplete="name" placeholder="optional">
+  </div>
+  {% endif %}
+
+  <div class="field">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username"
+           inputmode="email" autocapitalize="none" required>
+  </div>
+
+  <div class="field">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required
+           autocomplete="{{ 'new-password' if mode != 'login' else 'current-password' }}">
+  </div>
+
+  <button type="submit" id="go">{{ action }}</button>
+  <div class="msg" id="msg" role="status" aria-live="polite"></div>
+
+  {% if mode == "owner" %}
+  <p class="hint">This is the first account, so it becomes the <b>owner</b>. You can
+    invite family from Settings afterwards, and any data already on this server
+    becomes yours.</p>
+  {% elif mode == "join" %}
+  <p class="hint">You are joining <b>{{ inviter }}</b>'s server. Your records stay
+    in your own account — nobody else sees them.</p>
+  {% else %}
+  <p class="hint">No account? You need an invite link from whoever runs this server.</p>
+  {% endif %}
+</form>
+
+<script>
+const MODE = {{ mode | tojson }};
+const INVITE = {{ invite | tojson }};
+const form = document.getElementById("form");
+const msg = document.getElementById("msg");
+const go = document.getElementById("go");
+
+function say(text, kind){ msg.textContent = text; msg.className = "msg " + kind; }
+
+form.addEventListener("submit", async e => {
+  e.preventDefault();
+  go.disabled = true;
+  say("", "");
+  const body = {
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("password").value,
+  };
+  if(MODE !== "login"){
+    body.display_name = (document.getElementById("name") || {}).value || "";
+    // The account's timezone, taken from the device setting it up, so days
+    // break at the right midnight without anyone having to know the name.
+    try{ body.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; }
+    catch(_){ body.timezone = ""; }
+    if(INVITE) body.invite = INVITE;
+  }
+  try{
+    const r = await fetch(MODE === "login" ? "/api/login" : "/api/register", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)});
+    if(!r.ok){
+      let detail; try{ detail = (await r.json()).detail; }catch(_){ detail = "HTTP " + r.status; }
+      say(detail, "bad"); go.disabled = false; return;
+    }
+    say("Signed in. One moment…", "good");
+    location.href = "/";
+  }catch(err){
+    say("Could not reach the server. " + err.message, "bad");
+    go.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

@@ -8,10 +8,12 @@ import logging
 import os
 import signal
 import sys
+from pathlib import Path
 
 import click
 
 from .config import Config
+from .setup_config import normalise_code, write_pairing as _write_pairing
 from .connection import WhoopBridge, scan
 from .forwarder import Forwarder
 from .heartbeat import Heartbeat
@@ -214,6 +216,76 @@ def test_endpoint_cmd(config_path: str) -> None:
     click.echo(f"HTTP {resp.status_code}")
     click.echo(resp.text[:500])
     raise SystemExit(0 if 200 <= resp.status_code < 300 else 1)
+
+
+
+
+@main.command("pair")
+@click.option("--config", "-c", "config_path", default="config.toml",
+              help="Config file to write the token into.")
+@click.option("--server", default="", help="Your server's address, e.g. https://strap.example.com")
+@click.option("--code", default="", help="The pairing code from the app.")
+@click.option("--name", default="", help="What to call this laptop in the app.")
+def pair_cmd(config_path: str, server: str, code: str, name: str) -> None:
+    """Claim a pairing code and write this laptop's own token into the config.
+
+    Replaces copying a shared secret out of the server's settings. The code is
+    short-lived and single use, and what comes back belongs to this laptop
+    alone -- revoking it later does not disturb any other.
+    """
+    import socket
+    import tomllib
+
+    import httpx
+
+    _setup_logging("INFO")
+    path = Path(config_path)
+    existing: dict = {}
+    if path.exists():
+        with path.open("rb") as fh:
+            existing = tomllib.load(fh)
+
+    server = (server or existing.get("forward", {}).get("forward_url", "")
+              .rsplit("/ingest", 1)[0]).strip().rstrip("/")
+    if not server:
+        server = click.prompt("Your server's address (e.g. https://strap.example.com)").strip().rstrip("/")
+    if not server.startswith(("http://", "https://")):
+        server = "https://" + server
+    if not code:
+        code = click.prompt("Pairing code from the app (shown under Settings)")
+    if not name:
+        name = socket.gethostname() or "Laptop"
+
+    cf_id = existing.get("forward", {}).get("cf_access_client_id", "")
+    cf_secret = existing.get("forward", {}).get("cf_access_client_secret", "")
+    headers = {"Content-Type": "application/json"}
+    if cf_id and cf_secret:
+        headers["CF-Access-Client-Id"] = cf_id
+        headers["CF-Access-Client-Secret"] = cf_secret
+
+    try:
+        resp = httpx.post(f"{server}/pair/claim",
+                          json={"code": normalise_code(code), "device_name": name},
+                          headers=headers, timeout=30.0)
+    except httpx.HTTPError as exc:
+        raise SystemExit(f"Could not reach {server}: {exc}")
+
+    if resp.status_code == 404:
+        raise SystemExit(
+            f"{server} answered, but has no pairing endpoint. Update the server first.")
+    if resp.status_code != 200:
+        detail = ""
+        try:
+            detail = resp.json().get("detail", "")
+        except Exception:  # noqa: BLE001
+            detail = resp.text[:200]
+        raise SystemExit(f"Pairing failed: {detail or resp.status_code}")
+
+    got = resp.json()
+    _write_pairing(path, server, got)
+    click.echo(f"Paired with {got.get('account', 'your account')} as {name!r}.")
+    click.echo(f"Token written to {path}.")
+    click.echo("Next: whoop-bridge scan   (to find your strap)")
 
 
 if __name__ == "__main__":

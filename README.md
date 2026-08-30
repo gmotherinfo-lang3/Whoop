@@ -122,6 +122,41 @@ your own distribution rather than WHOOP's Stress Score, fitness age is a VO₂ m
 comparison rather than biological age, and HRV is never scored against
 population norms.
 
+## Accounts
+
+The server holds accounts. Open its URL and the first visit creates the owner;
+after that it is invite only — from **Settings → Family** you generate a link,
+your brother opens it and sets his own password. Each account has its own
+SQLite file, its own timezone and its own maximum heart rate, and there is no
+query in this app that could return someone else's data because their rows are
+not in the file.
+
+Setting a laptop up is a code, not a checkout:
+
+1. Sign in, open **Settings → Connect a laptop**. It shows a code like
+   `K7M2-9QX4`, good for about fifteen minutes and usable once.
+2. Run `Strap.exe` on the Windows laptop. It asks for the server address
+   (already filled in) and that code, then lists the straps it can see and
+   writes your choice itself.
+
+That laptop now has its own key, tied to your account. Revoking it from
+Settings does not disturb any other laptop, and the download itself contains
+no secret — it is code and an address.
+
+`Strap.exe` is a single file with Python inside it, so there is nothing to
+install first. It is built on a Windows runner by
+[`.github/workflows/windows-app.yml`](.github/workflows/windows-app.yml) —
+PyInstaller cannot cross-compile, so the server cannot produce it. Download the
+artifact from that run and put it wherever you fetch it from.
+
+Prefer the command line, or not on Windows? The source install still works:
+unzip the bundle from `/setup`, run `windows\setup.ps1`, then
+`whoop-bridge pair --code K7M2-9QX4` and `whoop-bridge scan`.
+
+On iPhone, open the URL in Safari and **Add to Home Screen**. It gets an icon
+and launches without Safari's chrome, which is as close to an installed app as
+iOS allows something that is not in the App Store.
+
 ## Setup
 
 The laptop half. For the server and tunnel, see **[DEPLOY.md](DEPLOY.md)**.
