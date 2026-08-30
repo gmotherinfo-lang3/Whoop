@@ -74,6 +74,9 @@ def self_check() -> int:
         print("present but did not initialise here:" if line is unhappy[0] else "", line)
     if missing:
         print("This build is missing:\n" + "\n".join(missing))
+        print("\nThese are bundling faults, not runtime ones. Fix them by making\n"
+              "PyInstaller see the module -- not by adding it to `excludes` in\n"
+              "windows/strap.spec, which is what causes this.")
         return 1
     print(f"ok: {len(required)} required modules present, files in {app_dir()}")
     return 0

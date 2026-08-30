@@ -40,6 +40,30 @@ jobs:
           python -c "from tray.setup_window import SetupWindow"
           python -c "from whoop_bridge.setup_config import needs_setup, normalise_code"
 
+      - name: What Bluetooth support is actually installed
+        # Printed every run, not just on failure. bleak reaches Windows
+        # Bluetooth through the winrt namespace packages, and when they are
+        # missing the app builds cleanly and then never sees a strap -- so
+        # what was found needs to be on the record, not inferred afterwards.
+        run: |
+          python -c @"
+          import importlib.metadata as md
+          dists = sorted(d.metadata['Name'] for d in md.distributions()
+                         if (d.metadata['Name'] or '').lower().startswith('winrt'))
+          print(f'winrt distributions installed: {len(dists)}')
+          for name in dists:
+              print('   ', name)
+          import bleak
+          print('bleak', bleak.__version__)
+          import winrt.windows.devices.bluetooth as b
+          print('winrt bluetooth import: ok')
+          from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs
+          mods, libs = collect_submodules('winrt'), collect_dynamic_libs('winrt')
+          print(f'PyInstaller will bundle {len(mods)} winrt modules, {len(libs)} binaries')
+          if not mods:
+              raise SystemExit('PyInstaller cannot see any winrt modules to bundle')
+          "@
+
       - name: Build
         run: pyinstaller --clean --noconfirm windows/strap.spec
 
@@ -54,7 +78,11 @@ jobs:
           Write-Host "Strap.exe is $([math]::Round($size,1)) MB"
           if ($size -gt 200) { throw "unexpectedly large: check the excludes in strap.spec" }
           & dist/Strap.exe --check
-          if ($LASTEXITCODE -ne 0) { throw "the built exe is missing something it needs" }
+          if ($LASTEXITCODE -ne 0) {
+            throw "The built exe is missing something it needs -- see the list above. " +
+                  "Do not silence this by adding the module to `excludes` in " +
+                  "windows/strap.spec: that is what makes it missing."
+          }
 
       - uses: actions/upload-artifact@v4
         with:
