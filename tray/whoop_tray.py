@@ -183,21 +183,32 @@ class TrayApp:
         self._set("stopped", GREY)
 
     def do_scan(self, *_) -> None:
+        """Open the setup window rather than printing an address to copy.
+
+        Telling someone a Bluetooth address and asking them to paste it into
+        the right line of a TOML file is the step that loses people. The
+        window lists what it found and writes the choice itself.
+        """
         def worker() -> None:
-            self.icon.notify("Scanning for 12 seconds…", "Whoop bridge")
             try:
-                found = asyncio.run(scan(12.0))
-            except Exception as exc:
-                self.icon.notify(str(exc), "Scan failed")
-                return
-            if not found:
-                self.icon.notify(
-                    "No strap found. Un-pair it from the WHOOP phone app first — "
-                    "the strap only talks to one device at a time.", "Nothing found")
-                return
-            self.icon.notify("\n".join(f"{a}  {n}" for a, n in found)
-                             + "\n\nPut the address in config.toml.", "Straps found")
+                from tray.setup_window import SetupWindow
+                SetupWindow(self.config_path).run()
+                self.reload()
+            except Exception as exc:                      # noqa: BLE001
+                self.icon.notify(str(exc), "Setup failed")
         threading.Thread(target=worker, daemon=True).start()
+
+    def reload(self) -> None:
+        """Pick up a config the setup window has just written."""
+        try:
+            self.cfg = Config.load(self.config_path)
+        except Exception:                                 # noqa: BLE001
+            return
+        self.updater = Updater(self.cfg, interval=self.cfg.update_check_interval)
+        if self._running():
+            self.stop()
+        if self.cfg.address and self.cfg.forward_token:
+            self.start()
 
     def open_dashboard(self, *_) -> None:
         url = self.cfg.forward_url.rsplit("/ingest", 1)[0] if self.cfg.forward_url else ""
@@ -252,7 +263,23 @@ def main() -> None:
         if apply_pending():
             os.environ["WHOOP_SKIP_UPDATE"] = "1"
             os.execv(sys.executable, [sys.executable, "-m", "tray.whoop_tray", *sys.argv[1:]])
-    TrayApp(sys.argv[1] if len(sys.argv) > 1 else "config.toml").run()
+    config_path = sys.argv[1] if len(sys.argv) > 1 else "config.toml"
+
+    # First run: there is nothing useful a tray icon can do until this laptop
+    # has a key and a strap, so ask for both up front rather than sitting grey
+    # in the corner with the answer buried in a menu.
+    from whoop_bridge.setup_config import needs_setup
+    if needs_setup(config_path):
+        try:
+            from tray.setup_window import SetupWindow
+            SetupWindow(config_path).run()
+        except Exception as exc:                          # noqa: BLE001
+            log.warning("setup window unavailable (%s); use `whoop-bridge pair`", exc)
+
+    app = TrayApp(config_path)
+    if app.cfg.address and app.cfg.forward_token:
+        app.start()          # already set up: just go
+    app.run()
 
 
 if __name__ == "__main__":

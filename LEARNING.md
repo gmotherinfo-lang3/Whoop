@@ -464,3 +464,55 @@ addressed to one machine.
   explain it.
 * **Changing a password ends every session.** That is usually why someone is
   changing it.
+
+---
+
+# Making the laptop half simpler
+
+Two steps did most of the damage. Installing Python 3.11+ from python.org and
+remembering to tick "Add to PATH" is the one that defeats people outright, and
+pasting a Bluetooth address into the right line of a TOML file is the one that
+defeats them quietly — the app just never connects and nothing says why.
+
+Both are gone from the normal path:
+
+* **`Strap.exe` is one file** with Python inside it (PyInstaller). Download,
+  double-click. PyInstaller does not cross-compile, so it is built on a Windows
+  runner in CI rather than by the server — the server cannot produce it, and
+  saying so is more useful than pretending otherwise.
+* **First run is a window, not a file.** Two fields (server, pairing code),
+  then a list of the straps it can see. It writes `config.toml` itself, editing
+  in place so comments and anything already tuned survive: setup is a
+  convenience, not the only way in. The CLI path still works unchanged.
+
+## Things worth having learnt
+
+**A frozen build loses imports silently.** PyInstaller only bundles what it can
+see, and the two most likely losses here — bleak's Windows Runtime backend and
+tkinter — do not fail at startup. They fail later as "no strap found" and a
+setup window that never opens, which are miserable things to diagnose from a
+user's description. So `Strap.exe --check` imports everything the app needs
+from inside the bundle and CI runs it against the built exe. It distinguishes
+"not in the bundle" from "present but would not start here", because a tray
+icon legitimately cannot initialise on a build machine.
+
+**The GUI dragged in the CLI.** `setup_window` imported the pairing write-back
+from `whoop_bridge.cli`, which pulls in click and everything else. Found by
+running the window under a bare interpreter, where it failed with
+`No module named 'click'` in the status label. The file handling now lives in
+`whoop_bridge/setup_config.py`, which imports nothing but the standard library
+and is testable without a display.
+
+**Where a portable app keeps its files.** Beside the exe when that is writable,
+which is what people expect of something they downloaded and can move; under
+`%LOCALAPPDATA%` when it is not, which is what happens when it has been put in
+Program Files.
+
+## What could not be verified here
+
+There is no Bluetooth in the environment this was written in and no strap, so
+the BLE layer has still never run against real hardware — that was already
+true of the CLI bridge. The window itself was driven end to end under Xvfb with
+pairing and scanning stubbed: wrong code, right code, strap list, selection,
+and the config it produced. What remains untested is the part that talks to an
+actual WHOOP 4.0.

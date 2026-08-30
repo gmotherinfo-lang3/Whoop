@@ -1,0 +1,63 @@
+name: Windows app
+
+# PyInstaller does not cross-compile, so the one-file Strap.exe is built here
+# on a Windows runner rather than on the server. The artifact is what people
+# download; put it beside the server's /setup page, or attach it to a release.
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    paths:
+      - "whoop_bridge/**"
+      - "tray/**"
+      - "windows/**"
+      - "pyproject.toml"
+      - ".github/workflows/windows-app.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[tray]"
+          pip install pyinstaller==6.11.1
+
+      - name: Check it imports before packaging it
+        # A missing dependency is far easier to read here than as a silent
+        # failure inside a frozen build.
+        run: |
+          python -c "import bleak, pystray, PIL, httpx, click, tkinter"
+          python -c "from tray.setup_window import SetupWindow"
+          python -c "from whoop_bridge.setup_config import needs_setup, normalise_code"
+
+      - name: Build
+        run: pyinstaller --clean --noconfirm windows/strap.spec
+
+      - name: Smoke test the exe
+        # --check imports everything the app needs from inside the frozen
+        # bundle. PyInstaller drops imports it cannot see, and the two most
+        # likely losses -- bleak's WinRT backend and tkinter -- surface much
+        # later as "no strap found" and a setup window that never opens.
+        run: |
+          if (-not (Test-Path dist/Strap.exe)) { throw "Strap.exe was not produced" }
+          $size = (Get-Item dist/Strap.exe).Length / 1MB
+          Write-Host "Strap.exe is $([math]::Round($size,1)) MB"
+          if ($size -gt 200) { throw "unexpectedly large: check the excludes in strap.spec" }
+          & dist/Strap.exe --check
+          if ($LASTEXITCODE -ne 0) { throw "the built exe is missing something it needs" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Strap-windows
+          path: dist/Strap.exe
+          if-no-files-found: error

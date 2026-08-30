@@ -173,6 +173,9 @@ In the app, open **Settings -> Connect a laptop**. It shows a code. Then:
 The code works once and expires after about fifteen minutes; ask for another
 if it lapses.
 
+(The one-file `Strap.exe` does steps 1-3 in a window instead, and needs no
+Python at all. These instructions are for the source install.)
+
 ## 3. Find your strap
 
 **Un-pair the strap from the WHOOP phone app first**, and remove it from that

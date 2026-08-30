@@ -13,6 +13,7 @@ from pathlib import Path
 import click
 
 from .config import Config
+from .setup_config import normalise_code, write_pairing as _write_pairing
 from .connection import WhoopBridge, scan
 from .forwarder import Forwarder
 from .heartbeat import Heartbeat
@@ -263,7 +264,8 @@ def pair_cmd(config_path: str, server: str, code: str, name: str) -> None:
         headers["CF-Access-Client-Secret"] = cf_secret
 
     try:
-        resp = httpx.post(f"{server}/pair/claim", json={"code": code, "device_name": name},
+        resp = httpx.post(f"{server}/pair/claim",
+                          json={"code": normalise_code(code), "device_name": name},
                           headers=headers, timeout=30.0)
     except httpx.HTTPError as exc:
         raise SystemExit(f"Could not reach {server}: {exc}")
@@ -284,43 +286,6 @@ def pair_cmd(config_path: str, server: str, code: str, name: str) -> None:
     click.echo(f"Paired with {got.get('account', 'your account')} as {name!r}.")
     click.echo(f"Token written to {path}.")
     click.echo("Next: whoop-bridge scan   (to find your strap)")
-
-
-def _write_pairing(path: Path, server: str, got: dict) -> None:
-    """Put the device token into the config, leaving everything else alone.
-
-    Written in place rather than regenerated, so a config someone has already
-    tuned -- their strap's address especially -- survives re-pairing.
-    """
-    template = path.read_text(encoding="utf-8") if path.exists() else _blank_config()
-    replacements = {
-        "forward_url": got.get("ingest_url") or f"{server}/ingest",
-        "forward_token": got["token"],
-    }
-    lines, seen = [], set()
-    in_forward = False
-    for line in template.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("["):
-            in_forward = stripped == "[forward]"
-        if in_forward:
-            for key, value in replacements.items():
-                if stripped.startswith(f"{key} ") or stripped.startswith(f"{key}="):
-                    line = f'{key} = "{value}"'
-                    seen.add(key)
-                    break
-        lines.append(line)
-    missing = [f'{k} = "{v}"' for k, v in replacements.items() if k not in seen]
-    if missing:
-        lines.append("")
-        lines.append("[forward]" if "[forward]" not in template else "")
-        lines.extend(missing)
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-
-
-def _blank_config() -> str:
-    return ('[device]\naddress = ""\n\n[forward]\nforward_url = ""\n'
-            'forward_token = ""\n\n[storage]\nspool_path = "whoop-spool.db"\n')
 
 
 if __name__ == "__main__":

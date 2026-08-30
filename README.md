@@ -135,12 +135,23 @@ Setting a laptop up is a code, not a checkout:
 
 1. Sign in, open **Settings → Connect a laptop**. It shows a code like
    `K7M2-9QX4`, good for about fifteen minutes and usable once.
-2. Download the laptop bundle from `/setup`, run `windows\setup.ps1`.
-3. `whoop-bridge pair --code K7M2-9QX4`
+2. Run `Strap.exe` on the Windows laptop. It asks for the server address
+   (already filled in) and that code, then lists the straps it can see and
+   writes your choice itself.
 
 That laptop now has its own key, tied to your account. Revoking it from
 Settings does not disturb any other laptop, and the download itself contains
 no secret — it is code and an address.
+
+`Strap.exe` is a single file with Python inside it, so there is nothing to
+install first. It is built on a Windows runner by
+[`.github/workflows/windows-app.yml`](.github/workflows/windows-app.yml) —
+PyInstaller cannot cross-compile, so the server cannot produce it. Download the
+artifact from that run and put it wherever you fetch it from.
+
+Prefer the command line, or not on Windows? The source install still works:
+unzip the bundle from `/setup`, run `windows\setup.ps1`, then
+`whoop-bridge pair --code K7M2-9QX4` and `whoop-bridge scan`.
 
 On iPhone, open the URL in Safari and **Add to Home Screen**. It gets an icon
 and launches without Safari's chrome, which is as close to an installed app as
