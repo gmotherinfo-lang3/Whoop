@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import logging
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -31,6 +32,7 @@ from .analytics import build_epochs, summarise_day
 from .bridge import cached_zip, pushed_config, release
 from .bundle import build_zip, bundle_status, download_allowed, public_base_url
 from .circadian import hr_trough, recovery_velocity
+from .clock import Clock
 from .device import describe
 from .efficiency import efficiency_index
 from .monitor import channel, summarise as summarise_channels
@@ -46,13 +48,15 @@ from .ml import MODEL_NAME, ActivityClassifier, classify
 from .readiness import activity_learning_status, insight_learning_status
 from .segment import find_bouts
 
+log = logging.getLogger("whoop.server")
+
 BASE = Path(__file__).parent
 DB_PATH = os.environ.get("WHOOP_DB", "/data/whoop.db")
 INGEST_TOKEN = os.environ.get("INGEST_TOKEN", "")
 MAX_HR = float(os.environ.get("MAX_HR", "190"))
 SLEEP_NEED_H = float(os.environ.get("SLEEP_NEED_HOURS", "8"))
 BASELINE_DAYS = int(os.environ.get("BASELINE_DAYS", "30"))
-TZ_OFFSET_H = float(os.environ.get("TZ_OFFSET_HOURS", "0"))
+CLOCK = Clock()
 USER_AGE = float(os.environ["USER_AGE"]) if os.environ.get("USER_AGE") else None
 USER_SEX = os.environ.get("USER_SEX", "").strip().lower() or "male"
 # The longest history any view asks for, and the stress scale's default
@@ -74,7 +78,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """
     def warm() -> None:
         try:
-            today = datetime.now(timezone.utc)
+            today = _today()
             for i in range(WARM_DAYS + 1):
                 _raw_summary(today - timedelta(days=i))
             summary = _summarise(today)
@@ -130,10 +134,17 @@ def _load_model() -> ActivityClassifier | None:
 
 
 def _parse_date(value: str) -> datetime:
+    """A YYYY-MM-DD from the app, as local midnight of that calendar day."""
     try:
-        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        naive = datetime.strptime(value, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(400, "date must be YYYY-MM-DD")
+    return naive.replace(tzinfo=CLOCK.zone)
+
+
+def _today() -> datetime:
+    """Now, in the configured zone -- so "today" is the user's today."""
+    return CLOCK.now()
 
 
 def require_token(authorization: str = Header(default="")) -> None:
@@ -173,9 +184,7 @@ def healthz() -> dict[str, Any]:
 
 def _day_bounds(day: datetime) -> tuple[int, int]:
     """Local-day boundaries, expressed as unix seconds."""
-    start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-    start_unix = int(start.timestamp() - TZ_OFFSET_H * 3600)
-    return start_unix, start_unix + 86400
+    return CLOCK.bounds(day)
 
 
 # Day summaries are pure functions of the stored records, so they are cached.
@@ -259,8 +268,11 @@ def _touched_dates(records: list[dict[str, Any]]) -> set[str]:
     for r in records:
         unix = r.get("unix")
         if isinstance(unix, (int, float)):
-            out.add(datetime.fromtimestamp(unix + TZ_OFFSET_H * 3600, timezone.utc)
-                    .strftime("%Y-%m-%d"))
+            # None for a timestamp that is not a real instant; those records
+            # are stored but belong to no day, so there is nothing to expire.
+            day = CLOCK.day_of(unix)
+            if day:
+                out.add(day)
     return out
 
 
@@ -343,18 +355,19 @@ def _summarise(day: datetime) -> dict[str, Any]:
 
 @app.get("/api/day/{date}")
 def api_day(date: str) -> dict[str, Any]:
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    except ValueError:
-        raise HTTPException(400, "date must be YYYY-MM-DD")
+    day = _parse_date(date)
     return _summarise(day)
 
 
 @app.get("/api/summary")
 def api_summary(days: int = Query(7, ge=1, le=90)) -> dict[str, Any]:
-    today = datetime.now(timezone.utc)
+    today = _today()
     out = [_summarise(today - timedelta(days=i)) for i in range(days)]
     return {"days": out, "stats": db.stats(),
+            # The server owns the day boundary, so it also owns what "today"
+            # is. A phone in another zone would otherwise disagree by a day.
+            "today": today.strftime("%Y-%m-%d"),
+            "timezone": CLOCK.name,
             "disclaimer": "Locally computed approximations, not WHOOP's values. "
                           "Not medical measurements."}
 
@@ -365,10 +378,7 @@ def api_series(date: str, field: str = "heart_rate") -> dict[str, Any]:
                "resp_rate_raw", "ambient_light", "signal_quality"}
     if field not in allowed:
         raise HTTPException(400, f"field must be one of {sorted(allowed)}")
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    except ValueError:
-        raise HTTPException(400, "date must be YYYY-MM-DD")
+    day = _parse_date(date)
     lo, hi = _day_bounds(day)
     points = [{"t": r["device_unix"], "v": r[field]}
               for r in db.range(lo, hi) if r.get(field) is not None]
@@ -392,7 +402,7 @@ def api_put_journal(date: str, entry: JournalEntry) -> dict[str, Any]:
 
 @app.get("/api/journal")
 def api_journal_range(days: int = Query(30, ge=1, le=365)) -> dict[str, Any]:
-    today = datetime.now(timezone.utc)
+    today = _today()
     start = (today - timedelta(days=days)).strftime("%Y-%m-%d")
     return {"entries": db.journal_range(start, today.strftime("%Y-%m-%d")),
             "known_tags": db.all_tags()}
@@ -487,7 +497,7 @@ def api_train() -> dict[str, Any]:
 
 @app.get("/api/learning")
 def api_learning(days: int = Query(30, ge=7, le=365)) -> dict[str, Any]:
-    today = datetime.now(timezone.utc)
+    today = _today()
     lo, _ = _day_bounds(today - timedelta(days=days))
     _, hi = _day_bounds(today)
 
@@ -520,7 +530,7 @@ def api_learning(days: int = Query(30, ge=7, le=365)) -> dict[str, Any]:
 @app.get("/api/insights")
 def api_insights(days: int = Query(60, ge=14, le=365),
                  lag: int = Query(1, ge=0, le=3)) -> dict[str, Any]:
-    today = datetime.now(timezone.utc)
+    today = _today()
     summaries = [_summarise(today - timedelta(days=i)) for i in range(days)]
     entries = db.journal_range((today - timedelta(days=days)).strftime("%Y-%m-%d"),
                                today.strftime("%Y-%m-%d"))
@@ -530,7 +540,7 @@ def api_insights(days: int = Query(60, ge=14, le=365),
 @app.get("/api/advice")
 def api_advice(date: str | None = None,
                baseline_days: int = Query(30, ge=14, le=120)) -> dict[str, Any]:
-    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    day = _parse_date(date) if date else _today()
     today = _summarise(day)
     history = [_summarise(day - timedelta(days=i)) for i in range(1, baseline_days + 1)]
     return {"date": day.strftime("%Y-%m-%d"), **suggest(today, history)}
@@ -555,7 +565,7 @@ def _series(day: datetime, days: int, *path: str) -> list[float]:
 @app.get("/api/health-monitor")
 def api_health_monitor(date: str | None = None,
                        days: int = Query(30, ge=7, le=120)) -> dict[str, Any]:
-    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    day = _parse_date(date) if date else _today()
     lo, hi = _day_bounds(day)
     summary = _summarise(day)
     records = db.range(lo, hi)
@@ -629,7 +639,7 @@ def _stress_reference_day(past: datetime, hrv_base: float | None) -> list[float]
 @app.get("/api/stress")
 def api_stress(date: str | None = None,
                days: int = Query(STRESS_BASELINE_DAYS, ge=3, le=60)) -> dict[str, Any]:
-    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    day = _parse_date(date) if date else _today()
     lo, hi = _day_bounds(day)
     summary = _summarise(day)
     epochs = build_epochs(db.range(lo, hi))
@@ -649,7 +659,7 @@ def api_stress(date: str | None = None,
 
 @app.get("/api/fitness-age")
 def api_fitness_age(days: int = Query(60, ge=14, le=180)) -> dict[str, Any]:
-    today = datetime.now(timezone.utc)
+    today = _today()
     summary = _summarise(today)
     resting = (summary.get("baselines") or {}).get("resting_hr") \
         or (summary.get("heart_rate") or {}).get("resting")
@@ -754,7 +764,7 @@ def _sleep_window(summary: dict[str, Any]) -> tuple[int, int] | None:
 def api_advanced(date: str | None = None,
                  days: int = Query(60, ge=14, le=180)) -> dict[str, Any]:
     """Non-linear HRV, circadian phase, recovery velocity, load and targets."""
-    day = _parse_date(date) if date else datetime.now(timezone.utc)
+    day = _parse_date(date) if date else _today()
     lo, hi = _day_bounds(day)
     records = db.range(lo, hi)
     summary = _summarise(day)
@@ -778,7 +788,7 @@ def api_advanced(date: str | None = None,
     }
 
     # --- circadian phase ---
-    out["circadian"] = (hr_trough(epochs, window[0], window[1], TZ_OFFSET_H)
+    out["circadian"] = (hr_trough(epochs, window[0], window[1], CLOCK.offset_hours(day))
                         if window else
                         {"usable": False, "reason": "no sleep block detected"})
 

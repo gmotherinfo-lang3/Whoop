@@ -12,8 +12,14 @@ services:
       MAX_HR: ${MAX_HR:-190}
       SLEEP_NEED_HOURS: ${SLEEP_NEED_HOURS:-8}
       BASELINE_DAYS: ${BASELINE_DAYS:-30}
-      # Hours offset from UTC for day boundaries, e.g. -5 for US Eastern.
-      TZ_OFFSET_HOURS: ${TZ_OFFSET_HOURS:-0}
+      # Your timezone, as an IANA name -- e.g. America/Chicago, Europe/London.
+      # Days break at YOUR local midnight, so an evening belongs to that
+      # evening rather than to tomorrow because UTC has already rolled over.
+      # Use a name, not a fixed offset: a fixed one is wrong for half the year
+      # anywhere the clocks change.
+      TZ_NAME: ${TZ_NAME:-UTC}
+      # Deprecated, still honoured if TZ_NAME is unset.
+      TZ_OFFSET_HOURS: ${TZ_OFFSET_HOURS:-}
       # Optional. Only the Fitness age view uses these, to compare your
       # estimated VO2 max against the population median. Unset is fine.
       USER_AGE: ${USER_AGE:-}

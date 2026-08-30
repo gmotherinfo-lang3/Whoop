@@ -119,3 +119,103 @@ def test_model_state_roundtrip(db):
     db.save_model("m", {"w": [9]}, 20, 0.91)
     assert db.load_model("m")["payload"]["w"] == [9]
     assert db.load_model("absent") is None
+
+
+# --- one night is one bout --------------------------------------------------
+# Seen in the app: a single night showed up as seven SLEEP entries, all
+# starting 12:00 AM and ending 06:24, 06:26, 06:27, 06:29, 06:33... Detection
+# re-runs while the strap is still streaming and each run sees a slightly
+# longer night; keying on (start_unix, end_unix) made every one a new row.
+NIGHT = 1_788_066_000        # local midnight
+
+
+def _sleep(db, start, end, **kw):
+    return db.upsert_activity(start, end, "sleep", 0.8, {"duration_min": (end - start) / 60},
+                              **kw)
+
+
+def test_a_night_that_grows_stays_one_activity(tmp_path):
+    from server.app.db import Database
+    db = Database(tmp_path / "a.db")
+    ids = [_sleep(db, NIGHT, NIGHT + m * 60) for m in (384, 386, 387, 389, 393)]
+    rows = [a for a in db.activities_range(NIGHT - 3600, NIGHT + 86400) if not a["deleted"]]
+    assert len(rows) == 1, f"{len(rows)} rows for one night"
+    assert len(set(ids)) == 1, "the same row should be updated each time"
+    assert rows[0]["end_unix"] == NIGHT + 393 * 60, "the bout should extend"
+
+
+def test_a_night_detected_in_fragments_becomes_one(tmp_path):
+    from server.app.db import Database
+    db = Database(tmp_path / "a.db")
+    _sleep(db, NIGHT, NIGHT + 82 * 60)               # 12:00 - 01:22
+    _sleep(db, NIGHT + 98 * 60, NIGHT + 394 * 60)    # 01:38 - 06:34
+    _sleep(db, NIGHT, NIGHT + 384 * 60)              # the whole night
+    rows = [a for a in db.activities_range(NIGHT - 3600, NIGHT + 86400) if not a["deleted"]]
+    assert len(rows) == 1
+    assert rows[0]["start_unix"] == NIGHT
+    assert rows[0]["end_unix"] == NIGHT + 394 * 60
+
+
+def test_two_genuinely_separate_bouts_stay_separate(tmp_path):
+    from server.app.db import Database
+    db = Database(tmp_path / "a.db")
+    _sleep(db, NIGHT, NIGHT + 380 * 60)                          # the night
+    db.upsert_activity(NIGHT + 800 * 60, NIGHT + 855 * 60,       # a run that evening
+                       "run", 0.7, {"duration_min": 55})
+    rows = [a for a in db.activities_range(NIGHT - 3600, NIGHT + 86400) if not a["deleted"]]
+    assert len(rows) == 2
+
+
+def test_a_barely_touching_bout_is_not_absorbed(tmp_path):
+    """A workout starting right after a nap ends is its own thing."""
+    from server.app.db import Database
+    db = Database(tmp_path / "a.db")
+    db.upsert_activity(NIGHT, NIGHT + 60 * 60, "sleep", 0.8, {})
+    db.upsert_activity(NIGHT + 59 * 60, NIGHT + 120 * 60, "run", 0.7, {})
+    rows = [a for a in db.activities_range(NIGHT - 3600, NIGHT + 86400) if not a["deleted"]]
+    assert len(rows) == 2
+
+
+def test_re_detection_never_reopens_something_you_deleted(tmp_path):
+    from server.app.db import Database
+    db = Database(tmp_path / "a.db")
+    first = _sleep(db, NIGHT, NIGHT + 384 * 60)
+    db.delete_activity(first)
+    _sleep(db, NIGHT, NIGHT + 390 * 60)
+    rows = [a for a in db.activities_range(NIGHT - 3600, NIGHT + 86400) if not a["deleted"]]
+    assert len(rows) == 1 and rows[0]["id"] != first
+
+
+def test_re_detection_does_not_swallow_something_you_entered(tmp_path):
+    from server.app.db import Database
+    db = Database(tmp_path / "a.db")
+    mine = db.add_manual_activity(NIGHT, NIGHT + 380 * 60, "sleep", "went to bed early")
+    _sleep(db, NIGHT, NIGHT + 384 * 60)
+    rows = [a for a in db.activities_range(NIGHT - 3600, NIGHT + 86400) if not a["deleted"]]
+    assert mine in [r["id"] for r in rows]
+    assert [r for r in rows if r["id"] == mine][0]["note"] == "went to bed early"
+
+
+def test_databases_full_of_the_old_duplicates_are_cleaned_up(tmp_path):
+    """The migration has to fix the nights already recorded that way."""
+    import sqlite3
+    from server.app.db import Database
+
+    path = tmp_path / "a.db"
+    db = Database(path)
+    with db._lock:                                   # write them the old way
+        for m in (384, 386, 387, 389, 393):
+            db._conn.execute(
+                "INSERT INTO activities (start_unix, end_unix, detected_type, "
+                "confidence, features, source, note, created_at) "
+                "VALUES (?,?,?,?,?,?,?,datetime('now'))",
+                (NIGHT, NIGHT + m * 60, "sleep", 0.8, "{}", "auto", None))
+        db._conn.commit()
+    assert len(db.activities_range(NIGHT - 3600, NIGHT + 86400)) == 5
+    db.close()
+
+    reopened = Database(path)                        # migration runs on open
+    rows = [a for a in reopened.activities_range(NIGHT - 3600, NIGHT + 86400)
+            if not a["deleted"]]
+    assert len(rows) == 1
+    assert rows[0]["end_unix"] == NIGHT + 393 * 60

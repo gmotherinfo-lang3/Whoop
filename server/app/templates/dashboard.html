@@ -179,14 +179,15 @@ h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mu
 .ringbar.compact .ringcell .cap{color:var(--ink2)}
 
 /* ---- health monitor strip ---- */
-.hm{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.hm .c{text-align:center;padding:9px 3px 8px;border-radius:var(--r-sm);
+.hm{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.hm .c{text-align:center;padding:9px 3px 8px;border-radius:var(--r-sm);min-width:0;
   background:color-mix(in srgb,var(--ink) 4%,transparent)}
 .hm .c svg{opacity:.65;margin-bottom:5px}
 .hm .c .k{font-size:9px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted)}
 .hm .c .v{font-size:18px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums;
   letter-spacing:-.02em}
-.hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums}
+.hm .c .d{font-size:10px;margin-top:2px;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hm .c .v.none{color:var(--muted);font-weight:400}
 
 /* ---- detail views ---- */
@@ -528,7 +529,24 @@ function icon(name, size = 20, extra = "") {
     stroke-linejoin="round" aria-hidden="true" ${extra}>${d}</svg>`;
 }
 
-function today(){ return new Date().toISOString().slice(0,10); }
+// A YYYY-MM-DD from the server is a CALENDAR DAY, not an instant. Parsing it
+// as "...T00:00:00Z" makes it midnight UTC, which then renders as the previous
+// day for everyone west of Greenwich -- that is why yesterday's date sat above
+// today's numbers. These build and read plain local dates instead, so the
+// label always matches the string it came from.
+function ymd(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
+       + "-" + String(d.getDate()).padStart(2,"0");
+}
+function dateOf(iso){
+  const [y,m,d] = String(iso).split("-").map(Number);
+  return new Date(y, (m||1)-1, d||1);
+}
+// The server decides which records belong to which day, in ITS zone. If the
+// phone is somewhere else, the phone's idea of "today" would disagree, so the
+// server's answer wins whenever we have it.
+let serverToday = null;
+function today(){ return serverToday || ymd(new Date()); }
 
 // Shaped like the content that is coming, so the layout does not jump.
 const SKELETONS = {
@@ -774,41 +792,61 @@ function hmIcon(kind){ return icon({resp:"lungs",spo2:"droplet",rhr:"heart",
 
 // The raw ADC channels have no real-world unit, so the number alone means
 // nothing. What is readable is how far it sits from your own baseline.
+// Resting HR and HRV arrive in real units. Respiratory rate, blood oxygen and
+// skin temperature arrive as raw sensor counts whose scaling the strap does
+// not document -- "3,067" is not a breathing rate and "513" is not a
+// percentage. Printing them as though they were the measurement made the card
+// look broken and invited reading them as clinical numbers. For those three
+// the honest headline is the only calibration-free thing available: how far
+// today sits from your own normal. The count itself is kept, quietly, because
+// it is what the deviation was computed from.
 function hmCell(kind, label, value, baseline, unit, higherBetter, raw){
   if(value===null||value===undefined)
     return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
       <div class="v none">–</div></div>`;
-  let delta = "";
-  if(baseline){
-    const pct = (value-baseline)/baseline*100;
-    if(Math.abs(pct) >= 0.4){
-      const good = higherBetter ? pct>0 : pct<0;
-      delta = `<div class="d" style="color:${good?css('--good'):css('--crit')}">
-        ${pct>0?"▲":"▼"} ${Math.abs(pct).toFixed(1)}%</div>`;
-    } else {
-      delta = `<div class="d" style="color:var(--muted)">— normal</div>`;
-    }
+
+  const pct = baseline ? (value-baseline)/baseline*100 : null;
+  const flat = pct !== null && Math.abs(pct) < 0.4;
+  const good = pct !== null && (higherBetter ? pct>0 : pct<0);
+  const colour = flat ? "var(--muted)" : good ? css("--good") : css("--crit");
+  const arrow = pct === null ? "" : flat ? "—" : pct>0 ? "▲" : "▼";
+  const magnitude = pct === null ? "" : `${Math.abs(pct).toFixed(1)}%`;
+
+  if(raw){
+    if(pct === null)
+      return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+        <div class="v none">–</div><div class="d">building</div></div>`;
+    // Kept short deliberately: five columns on a phone is about 70px each,
+    // and a longer label here pushed the whole page sideways, which in turn
+    // shifted the fixed tab bar out from under people's thumbs.
+    return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
+      <div class="v" style="color:${colour}">${flat ? "—" : arrow + magnitude}</div>
+      <div class="d" title="raw sensor count ${Math.round(value).toLocaleString()}">
+        ${flat ? "normal" : "vs normal"}</div></div>`;
   }
-  const shown = raw ? Math.round(value).toLocaleString() : fmt(value, 0);
+
+  const delta = pct === null ? "" :
+    `<div class="d" style="color:${colour}">${
+      flat ? "— normal" : arrow + " " + magnitude}</div>`;
   return `<div class="c">${hmIcon(kind)}<div class="k">${label}</div>
-    <div class="v">${shown}</div>${delta}</div>`;
+    <div class="v">${fmt(value, 0)}${unit?`<small>${esc(unit)}</small>`:""}</div>${delta}</div>`;
 }
 
 // ---------- Today ----------
 function shiftDate(days){
-  const d = new Date(state.date + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  const iso = d.toISOString().slice(0,10);
+  const d = dateOf(state.date);
+  d.setDate(d.getDate() + days);
+  const iso = ymd(d);
   if(iso > today()) return;
   state.date = iso; render();
 }
 
 function dateLabel(){
   if(state.date === today()) return "Today";
-  const d = new Date(state.date + "T00:00:00Z");
-  const y = new Date(); y.setUTCDate(y.getUTCDate()-1);
-  if(state.date === y.toISOString().slice(0,10)) return "Yesterday";
-  return d.toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
+  const y = dateOf(today()); y.setDate(y.getDate() - 1);
+  if(state.date === ymd(y)) return "Yesterday";
+  return dateOf(state.date)
+    .toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"});
 }
 
 function ringBar(t, band){
@@ -845,6 +883,14 @@ async function renderToday(el, stale, quiet){
     api(`/api/advice?date=${state.date}`).catch(e=>({ready:false,reason:e.message,suggestions:[]}))
   ]);
   if(stale()) return;
+  if(data.today){
+    // Adopt the server's day before anything is labelled with it. If the app
+    // was opened on a date the server no longer calls today -- left open
+    // overnight, say -- move with it rather than showing a stale "Today".
+    const was = serverToday;
+    serverToday = data.today;
+    if(was && state.date === was && was !== data.today) state.date = data.today;
+  }
   const days = data.days.filter(d=>d.has_data);
   const t = data.days.find(d=>d.date===state.date) || days[0];
 
@@ -878,7 +924,13 @@ async function renderToday(el, stale, quiet){
         <span class="dot" style="background:${band.c}"></span>${band.t}
         <span class="muted" style="margin-left:6px;font-weight:400">
           ${t.recovery.score==null ? esc(t.recovery.note||"")
-            : `· HRV ${fmt(t.recovery.components.hrv)} · RHR ${fmt(t.recovery.components.resting_hr)} · Sleep ${fmt(t.recovery.components.sleep)}`}</span>
+            /* These are the three 0-100 contributions that make up the recovery
+               score, NOT the measurements. Printing them bare as "HRV 36" beside
+               a Health Monitor reading "HRV 53 ms" looked like the same number
+               disagreeing with itself. */
+            : `· from HRV ${fmt(t.recovery.components.hrv)}, RHR ${fmt(
+                 t.recovery.components.resting_hr)}, sleep ${fmt(
+                 t.recovery.components.sleep)} <span style="opacity:.65">(each /100)</span>`}</span>
       </div>
     </div>
 
@@ -987,7 +1039,7 @@ function dayRow(d){
   const band = BANDS[d.recovery.band];
   const colour = band ? band.c : "var(--muted)";
   const mins = d.sleep.total_minutes || 0;
-  const when = new Date(d.date + "T00:00:00Z")
+  const when = dateOf(d.date)
     .toLocaleDateString([], {weekday:"short", day:"numeric", month:"short"});
   return `<div class="dayrow">
     <span class="dot" style="background:${colour}"></span>
@@ -1149,8 +1201,8 @@ async function renderJournal(el, stale, quiet){
 
   $("#iadd").onclick = async () => {
     const [hh,mm] = $("#itime").value.split(":").map(Number);
-    const when = new Date(state.date + "T00:00:00Z");
-    when.setUTCHours(hh, mm, 0, 0);
+    const when = dateOf(state.date);
+    when.setHours(hh, mm, 0, 0);
     try{
       await api("/api/intake", {method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({at: when.toISOString(), substance: $("#isub").value,
@@ -1226,10 +1278,11 @@ async function renderActivities(el, stale, quiet){
       await api(`/api/activities/${id}`,{method:"DELETE"}); render(); };
   });
   $("#madd").onclick = async () => {
-    const base=Math.floor(new Date(state.date+"T00:00:00Z").getTime()/1000);
     const [sh,sm]=$("#mstart").value.split(":").map(Number);
     const [eh,em]=$("#mend").value.split(":").map(Number);
-    let start=base+sh*3600+sm*60, end=base+eh*3600+em*60;
+    const from=dateOf(state.date), to=dateOf(state.date);
+    from.setHours(sh, sm, 0, 0); to.setHours(eh, em, 0, 0);
+    let start=Math.floor(from.getTime()/1000), end=Math.floor(to.getTime()/1000);
     if(end<=start) end+=86400;
     try{
       await api("/api/activities",{method:"POST",headers:{"Content-Type":"application/json"},

@@ -108,11 +108,13 @@ def test_the_cache_is_bounded():
 
 def test_touched_dates_uses_the_configured_day_boundary(monkeypatch):
     import server.app.main as main
-    # 03:00 UTC is the previous local day at UTC-5.
+    from server.app.clock import Clock
+    from zoneinfo import ZoneInfo
+    # 03:00 UTC is still the previous evening in Chicago.
     at = 1_767_236_400   # 2026-01-01T03:00:00Z
-    monkeypatch.setattr(main, "TZ_OFFSET_H", 0.0)
+    monkeypatch.setattr(main, "CLOCK", Clock(ZoneInfo("UTC")))
     assert main._touched_dates([{"unix": at}]) == {"2026-01-01"}
-    monkeypatch.setattr(main, "TZ_OFFSET_H", -5.0)
+    monkeypatch.setattr(main, "CLOCK", Clock(ZoneInfo("America/Chicago")))
     assert main._touched_dates([{"unix": at}]) == {"2025-12-31"}
 
 
