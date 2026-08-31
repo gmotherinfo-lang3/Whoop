@@ -137,7 +137,13 @@ class Client:
         self.base = base
         self.cookie = ""
 
-    def call(self, path, *, data=None, method=None, headers=None, timeout=60):
+    def call(self, path, *, data=None, method=None, headers=None, timeout=60,
+             raw=False):
+        """Returns (status, parsed JSON) -- or (status, bytes) when raw.
+
+        Endpoints that serve CSV or a zip have no JSON to parse, and the
+        interesting part of the answer is the bytes themselves.
+        """
         h = dict(headers or {})
         if data is not None:
             h.setdefault("Content-Type", "application/json")
@@ -145,9 +151,11 @@ class Client:
             self.base + path, method=method or ("POST" if data is not None else "GET"),
             data=json.dumps(data).encode() if data is not None else None,
             headers=h, cookie=self.cookie or None, timeout=timeout)
-        raw = resp_headers.get("set-cookie", "")
-        if "strap_session=" in raw:
-            self.cookie = raw.split(";")[0]
+        cookie_header = resp_headers.get("set-cookie", "")
+        if "strap_session=" in cookie_header:
+            self.cookie = cookie_header.split(";")[0]
+        if raw:
+            return status, body
         try:
             return status, json.loads(body)
         except Exception:
