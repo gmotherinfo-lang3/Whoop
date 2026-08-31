@@ -17,7 +17,8 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PHASES = ["setup", "bridge", "nasty", "poison", "input", "clients", "resilience"]
+PHASES = ["setup", "bridge", "nasty", "poison", "input", "clients", "resilience",
+          "polish"]
 
 
 def main() -> int:

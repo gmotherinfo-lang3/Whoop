@@ -29,7 +29,8 @@ from typing import Any
 
 from fastapi import (Cookie, Depends, FastAPI, Form, Header, HTTPException,
                      Query, Request)
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (HTMLResponse, RedirectResponse, Response,
+                               StreamingResponse)
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
@@ -44,6 +45,7 @@ from .circadian import hr_trough, recovery_velocity
 from .clock import Clock
 from .device import describe
 from .efficiency import efficiency_index
+from .export import DATASETS, MAX_DAYS
 from .monitor import channel, summarise as summarise_channels
 from .norms import (estimate_vo2max, fitness_age, trend as fitness_trend,
                     vo2max_trend)
@@ -691,6 +693,43 @@ def api_advanced(date: str | None = None,
                              "reason": "no sleep block to compare against"}
 
     return out
+
+
+# --- export -----------------------------------------------------------------
+@app.get("/api/export.csv")
+def api_export(dataset: str = Query("daily"),
+               start: str = Query(""), end: str = Query(""),
+               days: int = Query(0, ge=0, le=MAX_DAYS),
+               store: UserStore = Depends(my_store)) -> Response:
+    """Your own data, as CSV, for whatever window you ask for.
+
+    Streamed rather than assembled: a year of minute readings is tens of
+    megabytes, and building that as one string before replying is how a small
+    server on a home connection falls over.
+    """
+    rows = DATASETS.get(dataset)
+    if rows is None:
+        raise HTTPException(400, f"dataset must be one of {sorted(DATASETS)}")
+
+    last = store.today()
+    if days:
+        first, last_day = last - timedelta(days=days - 1), last
+    else:
+        if not start or not end:
+            raise HTTPException(400, "give either days, or both start and end")
+        first, last_day = _parse_date(start, store), _parse_date(end, store)
+    if last_day < first:
+        first, last_day = last_day, first
+    span = (last_day - first).days + 1
+    if span > MAX_DAYS:
+        raise HTTPException(400, f"that is {span} days; the most in one export is {MAX_DAYS}")
+
+    stamp = f"{store.clock.as_date(first)}_to_{store.clock.as_date(last_day)}"
+    return StreamingResponse(
+        rows(store, first, last_day), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 f'attachment; filename="whoop-{dataset}-{stamp}.csv"',
+                 "Cache-Control": "no-store"})
 
 
 # --- bridge update channel --------------------------------------------------

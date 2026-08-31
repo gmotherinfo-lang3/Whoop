@@ -40,6 +40,7 @@ minutes, and need a browser. `python -m pytest tests/` stays fast.
 | `input` | a half-written journal entry survives leaving the app and coming back, and refreshes resume once it is saved |
 | `clients` | the laptop and the phone at once: the phone writes journal entries, activities and intake through the tunnel while the strap streams, and the laptop sees it |
 | `resilience` | the laptop reboots mid-queue; the phone sees the strap's battery and connection state; the tunnel falls over and the LAN carries on; both clients save at the same moment; the phone writes under a heavy ingest load |
+| `polish` | the ring bar clears the phone's status bar; entrance animations run on a navigation and never on a background refresh; a value that moved during a refresh is highlighted; and the CSV export downloads, in every grain, with the right shape and the right guard rails |
 
 ## Why `poison` exists
 
